@@ -139,3 +139,53 @@ entities:
     assert "<version>3.2.6</version>" in pom
     assert "<mybatis-plus.version>3.5.5</mybatis-plus.version>" in pom
     assert "<jjwt.version>0.12.5</jjwt.version>" in pom
+
+
+def test_cli_generate_from_structured_project_yaml(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: club
+basePackage: com.acme.club
+description: club backend
+outputDir: .
+features:
+  security: false
+  jwt: false
+  redis: false
+  rabbitmq: false
+entities:
+  - name: Member
+    fields:
+      - name: phone
+        type: String
+        required: true
+        unique: true
+      - name: balance
+        type: BigDecimal
+""".strip()
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "springboot_project_generator",
+            "generate",
+            "--config",
+            str(config),
+            "--no-interactive",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    entity = (
+        tmp_path / "club/club-pojo/src/main/java/com/acme/club/entity/Member.java"
+    ).read_text()
+    pom = (tmp_path / "club/pom.xml").read_text()
+    assert "private BigDecimal balance;" in entity
+    assert "spring-boot-starter-security" not in pom
+    assert "spring-boot-starter-data-redis" not in pom

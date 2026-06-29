@@ -1,0 +1,36 @@
+projectName: club
+basePackage: com.acme.club
+description: club backend with member and coach management
+outputDir: /tmp
+roles:
+  - admin
+  - member
+features:
+  security: true
+  jwt: true
+  redis: false
+  rabbitmq: false
+  mysql: true
+  mybatisPlus: true
+entities:
+  - name: Member
+    fields:
+      - name: phone
+        type: String
+        required: true
+        unique: true
+      - name: balance
+        type: BigDecimal
+      - name: joinedAt
+        type: LocalDateTime
+      - name: active
+        type: Boolean
+  - name: Coach
+    fields:
+      - name: name
+        type: String
+        required: true
+      - name: specialty
+        type: String
+      - name: hourlyRate
+        type: BigDecimal

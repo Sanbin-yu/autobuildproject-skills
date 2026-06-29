@@ -89,6 +89,8 @@ def merge_config_options(options, args):
         description=args.description or options.description,
         output_dir=Path(args.output_dir) if args.output_dir != "." else options.output_dir,
         entities=args.entity or options.entities,
+        roles=options.roles,
+        features=options.features,
         java_version=java_version,
         maven_version=maven_version,
         spring_boot_version=args.spring_boot_version or options.spring_boot_version,

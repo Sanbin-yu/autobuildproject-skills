@@ -15,9 +15,10 @@ description: Use when creating or scaffolding Maven multi-module Spring Boot bac
    - 项目名称
    - 基础包名，或者默认使用 `com.example.<project>`
    - 项目方向和目标用户
-   - 1-3 个核心业务对象
-   - 角色权限或安全需求
+   - 1-3 个核心业务对象，以及每个对象最重要的字段
+   - 角色权限或安全需求，例如 admin、user、operator
    - 数据库、缓存、消息队列需求
+   - 是否启用 Security、JWT、Redis、RabbitMQ、MySQL、MyBatis-Plus
    - 输出目录
 2. 使用 `java -version` 和 `mvn -version` 检测本地版本；版本会影响生成结果时，让用户确认或覆盖。
 3. 在仓库根目录运行生成器：
@@ -40,12 +41,45 @@ python3 -m springboot_project_generator generate \
 python3 -m springboot_project_generator generate --config project.yaml --no-interactive
 ```
 
+结构化 `project.yaml` 示例：
+
+```yaml
+projectName: club
+basePackage: com.acme.club
+description: club backend with member management
+outputDir: ./examples
+roles:
+  - admin
+  - member
+features:
+  security: true
+  jwt: true
+  redis: false
+  rabbitmq: false
+  mysql: true
+  mybatisPlus: true
+entities:
+  - name: Member
+    fields:
+      - name: phone
+        type: String
+        required: true
+        unique: true
+      - name: balance
+        type: BigDecimal
+      - name: joinedAt
+        type: LocalDateTime
+```
+
 ## 默认规则
 
 - 项目结构：Maven 父工程，加 `<project>-common`、`<project>-pojo`、`<project>-server` 三个模块。
 - 依赖：Web、Validation、Security、MyBatis-Plus、MySQL、Lombok、JWT、Redis、RabbitMQ、Test。
 - 业务生成范围：1-3 个核心实体，并生成 entity/dto/vo/controller/service/mapper CRUD 骨架。
+- 字段级生成：如果用户提供字段，字段会进入 Entity、DTO、ListVO、DetailVO、ServiceImpl 和 `schema.sql`。
+- 字段类型：优先使用 `String`、`Integer`、`Long`、`BigDecimal`、`LocalDateTime`、`LocalDate`、`Boolean`、`Double`。
 - 外部服务：生成配置默认不要求首次启动时必须连接 MySQL、Redis 或 RabbitMQ。
+- 技术栈开关：关闭 Security、JWT、Redis、RabbitMQ、MySQL、MyBatis-Plus 时，要同步裁剪相关依赖和生成代码。
 - 已存在目标目录：不要覆盖；让用户选择新的输出目录或项目名。
 - 模板：Maven、项目 README、application.yml 已外置在 `templates/`，修改模板优先改模板文件。
 

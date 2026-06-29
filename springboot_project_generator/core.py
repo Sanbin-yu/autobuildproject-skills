@@ -30,12 +30,45 @@ class ProjectNames:
 
 
 @dataclass(frozen=True)
+class FeatureOptions:
+    security: bool = True
+    jwt: bool = True
+    redis: bool = True
+    rabbitmq: bool = True
+    mysql: bool = True
+    mybatis_plus: bool = True
+
+
+@dataclass(frozen=True)
+class FieldSpec:
+    name: str
+    java_type: str = "String"
+    required: bool = False
+    unique: bool = False
+
+
+@dataclass(frozen=True, eq=False)
+class EntitySpec:
+    name: str
+    fields: list = field(default_factory=list)
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.name == other
+        if isinstance(other, EntitySpec):
+            return self.name == other.name and self.fields == other.fields
+        return False
+
+
+@dataclass(frozen=True)
 class ProjectOptions:
     project_name: str
     description: str
     output_dir: Path
     base_package: str = None
     entities: list = field(default_factory=list)
+    roles: list = field(default_factory=list)
+    features: FeatureOptions = field(default_factory=FeatureOptions)
     java_version: str = "21"
     maven_version: str = "3.9"
     spring_boot_version: str = "3.3.5"
@@ -155,7 +188,9 @@ def load_project_config(config_path):
         base_package=data.get("basePackage"),
         description=data.get("description", ""),
         output_dir=output_dir,
-        entities=data.get("entities", []),
+        entities=parse_entity_specs(data.get("entities", [])),
+        roles=[str(role) for role in data.get("roles", [])],
+        features=parse_feature_options(data.get("features", {})),
         java_version=str(data.get("javaVersion", "21")),
         maven_version=str(data.get("mavenVersion", "3.9")),
         spring_boot_version=str(data.get("springBootVersion", "3.3.5")),
@@ -171,29 +206,84 @@ def require_config(data, key):
 
 
 def parse_simple_yaml(text):
-    data = {}
-    current_list_key = None
+    lines = []
     for raw_line in text.splitlines():
         if not raw_line.strip() or raw_line.lstrip().startswith("#"):
             continue
-        stripped = raw_line.strip()
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        lines.append((indent, raw_line.strip()))
+    if not lines:
+        return {}
+    value, index = parse_yaml_block(lines, 0, lines[0][0])
+    if index != len(lines):
+        raise ValueError("Unable to parse config near: %s" % lines[index][1])
+    return value
+
+
+def parse_yaml_block(lines, index, indent):
+    if lines[index][1].startswith("- "):
+        return parse_yaml_list(lines, index, indent)
+    return parse_yaml_map(lines, index, indent)
+
+
+def parse_yaml_map(lines, index, indent):
+    data = {}
+    while index < len(lines):
+        line_indent, stripped = lines[index]
+        if line_indent < indent:
+            break
+        if line_indent > indent:
+            raise ValueError("Unexpected indentation near: %s" % stripped)
         if stripped.startswith("- "):
-            if not current_list_key:
-                raise ValueError("List item found before a list key")
-            data[current_list_key].append(parse_scalar(stripped[2:].strip()))
-            continue
-        current_list_key = None
+            break
         if ":" not in stripped:
-            raise ValueError("Invalid config line: %s" % raw_line)
+            raise ValueError("Invalid config line: %s" % stripped)
         key, value = stripped.split(":", 1)
         key = key.strip()
         value = value.strip()
-        if value == "":
-            data[key] = []
-            current_list_key = key
-        else:
+        index += 1
+        if value:
             data[key] = parse_scalar(value)
-    return data
+            continue
+        if index < len(lines) and lines[index][0] > line_indent:
+            child_indent = lines[index][0]
+            data[key], index = parse_yaml_block(lines, index, child_indent)
+        else:
+            data[key] = []
+    return data, index
+
+
+def parse_yaml_list(lines, index, indent):
+    values = []
+    while index < len(lines):
+        line_indent, stripped = lines[index]
+        if line_indent < indent:
+            break
+        if line_indent > indent:
+            raise ValueError("Unexpected indentation near: %s" % stripped)
+        if not stripped.startswith("- "):
+            break
+        item_text = stripped[2:].strip()
+        index += 1
+        if not item_text:
+            if index < len(lines) and lines[index][0] > line_indent:
+                item, index = parse_yaml_block(lines, index, lines[index][0])
+                values.append(item)
+            else:
+                values.append(None)
+            continue
+        if ":" in item_text:
+            key, value = item_text.split(":", 1)
+            item = {key.strip(): parse_scalar(value.strip()) if value.strip() else []}
+            if not value.strip() and index < len(lines) and lines[index][0] > line_indent:
+                item[key.strip()], index = parse_yaml_block(lines, index, lines[index][0])
+            if index < len(lines) and lines[index][0] > line_indent:
+                extra, index = parse_yaml_map(lines, index, lines[index][0])
+                item.update(extra)
+            values.append(item)
+        else:
+            values.append(parse_scalar(item_text))
+    return values, index
 
 
 def parse_scalar(value):
@@ -206,9 +296,79 @@ def parse_scalar(value):
     return value
 
 
+def parse_feature_options(data):
+    data = data or {}
+    return FeatureOptions(
+        security=bool_config(data.get("security", True)),
+        jwt=bool_config(data.get("jwt", True)),
+        redis=bool_config(data.get("redis", True)),
+        rabbitmq=bool_config(data.get("rabbitmq", True)),
+        mysql=bool_config(data.get("mysql", True)),
+        mybatis_plus=bool_config(data.get("mybatisPlus", data.get("mybatis_plus", True))),
+    )
+
+
+def bool_config(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("true", "1", "yes", "on")
+
+
+def parse_entity_specs(values):
+    specs = []
+    for value in values:
+        if isinstance(value, EntitySpec):
+            specs.append(value)
+        elif isinstance(value, str):
+            specs.append(EntitySpec(to_pascal_case(value), default_entity_fields()))
+        elif isinstance(value, dict):
+            entity_name = value.get("name")
+            if not entity_name:
+                raise ValueError("Entity config must include name")
+            fields = [parse_field_spec(field) for field in value.get("fields", [])]
+            specs.append(EntitySpec(to_pascal_case(str(entity_name)), fields or default_entity_fields()))
+        else:
+            raise ValueError("Unsupported entity config: %s" % value)
+    return specs
+
+
+def parse_field_spec(value):
+    if isinstance(value, str):
+        if ":" in value:
+            name, java_type = value.split(":", 1)
+            return FieldSpec(normalize_field_name(name), java_type.strip() or "String")
+        return FieldSpec(normalize_field_name(value))
+    if isinstance(value, dict):
+        return FieldSpec(
+            name=normalize_field_name(require_config(value, "name")),
+            java_type=str(value.get("type", value.get("javaType", "String"))),
+            required=bool_config(value.get("required", False)),
+            unique=bool_config(value.get("unique", False)),
+        )
+    raise ValueError("Unsupported field config: %s" % value)
+
+
+def default_entity_fields():
+    return [
+        FieldSpec("name", "String", required=True),
+        FieldSpec("description", "String"),
+        FieldSpec("status", "Integer"),
+    ]
+
+
+def normalize_field_name(value):
+    parts = re.findall(r"[A-Za-z0-9]+", str(value))
+    if not parts:
+        raise ValueError("Field name must contain at least one letter or digit")
+    first = parts[0][:1].lower() + parts[0][1:]
+    return first + "".join(part[:1].upper() + part[1:] for part in parts[1:])
+
+
 def describe_plan(options):
     names = derive_names(options.project_name, options.base_package)
-    entities = options.entities or infer_entities(options.description)
+    entities = resolve_entity_specs(options)
     lines = [
         "Name: %s" % names.project_name,
         "Base package: %s" % names.base_package,
@@ -216,7 +376,7 @@ def describe_plan(options):
         "Java: %s" % options.java_version,
         "Maven: %s" % options.maven_version,
         "Spring Boot: %s" % options.spring_boot_version,
-        "Entities: %s" % ", ".join(entities),
+        "Entities: %s" % ", ".join(entity.name for entity in entities),
         "Output: %s" % (Path(options.output_dir) / names.project_name),
     ]
     return "\n".join(lines)
@@ -224,7 +384,7 @@ def describe_plan(options):
 
 def generate_project(options):
     names = derive_names(options.project_name, options.base_package)
-    entities = [to_pascal_case(entity) for entity in (options.entities or infer_entities(options.description))][:3]
+    entities = resolve_entity_specs(options)[:3]
     project_dir = Path(options.output_dir) / names.project_name
     if project_dir.exists():
         raise FileExistsError("Target directory already exists: %s" % project_dir)
@@ -236,6 +396,11 @@ def generate_project(options):
         path.write_text(content.rstrip() + "\n", encoding="utf-8")
 
     return project_dir
+
+
+def resolve_entity_specs(options):
+    raw_entities = options.entities or infer_entities(options.description)
+    return parse_entity_specs(raw_entities)
 
 
 def build_files(options, names, entities):
@@ -257,8 +422,8 @@ def build_files(options, names, entities):
     server_test_base = Path(names.server_module) / "src/test/java" / package_dir
 
     add_common_files(files, common_base, names)
-    add_pojo_files(files, pojo_base, names, entities)
-    add_server_files(files, server_base, server_test_base, names, entities)
+    add_pojo_files(files, pojo_base, names, entities, options.features)
+    add_server_files(files, server_base, server_test_base, names, entities, options.features)
     add_empty_resource_dirs(files, names)
     return files
 
@@ -511,19 +676,22 @@ public final class HttpClientUtil {
 """))
 
 
-def add_pojo_files(files, base, names, entities):
+def add_pojo_files(files, base, names, entities, features):
     package = names.base_package
     for entity in entities:
-        variable = to_camel_case(entity)
-        put(files, base / ("entity/%s.java" % entity), render_entity(package, entity))
-        put(files, base / ("dto/%sCreateDTO.java" % entity), render_create_dto(package, entity))
-        put(files, base / ("dto/%sUpdateDTO.java" % entity), render_update_dto(package, entity))
-        put(files, base / ("dto/%sQueryDTO.java" % entity), render_query_dto(package, entity))
-        put(files, base / ("vo/%sVO.java" % entity), render_vo(package, entity))
-        put(files, base / ("dto/%sLoginDTO.java" % entity), render_login_dto(package, entity, variable))
+        variable = to_camel_case(entity.name)
+        put(files, base / ("entity/%s.java" % entity.name), render_entity(package, entity, features))
+        put(files, base / ("dto/%sDTO.java" % entity.name), render_dto(package, entity))
+        put(files, base / ("dto/%sCreateDTO.java" % entity.name), render_create_dto(package, entity))
+        put(files, base / ("dto/%sUpdateDTO.java" % entity.name), render_update_dto(package, entity))
+        put(files, base / ("dto/%sQueryDTO.java" % entity.name), render_query_dto(package, entity))
+        put(files, base / ("vo/%sVO.java" % entity.name), render_vo(package, entity))
+        put(files, base / ("vo/%sListVO.java" % entity.name), render_list_vo(package, entity))
+        put(files, base / ("vo/%sDetailVO.java" % entity.name), render_detail_vo(package, entity))
+        put(files, base / ("dto/%sLoginDTO.java" % entity.name), render_login_dto(package, entity.name, variable))
 
 
-def add_server_files(files, base, test_base, names, entities):
+def add_server_files(files, base, test_base, names, entities, features):
     package = names.base_package
     app_class = "%sApplication" % names.project_class_name
     put(files, base / ("%s.java" % app_class), java(package, None, """
@@ -538,16 +706,18 @@ public class %s {
     }
 }
 """ % (app_class, app_class)))
-    put(files, base / "config/SecurityConfig.java", render_security_config(package))
+    if features.security:
+        put(files, base / "config/SecurityConfig.java", render_security_config(package))
     put(files, base / "config/WebMvcConfiguration.java", render_web_mvc_config(package))
     put(files, base / "controller/HealthController.java", render_health_controller(package))
     put(files, base / "handler/GlobalExceptionHandler.java", render_exception_handler(package))
-    put(files, base / "interceptor/JwtTokenAdminInterceptor.java", render_interceptor(package))
+    if features.jwt:
+        put(files, base / "interceptor/JwtTokenAdminInterceptor.java", render_interceptor(package))
     for entity in entities:
-        put(files, base / ("controller/%sController.java" % entity), render_controller(package, entity))
-        put(files, base / ("mapper/%sMapper.java" % entity), render_mapper(package, entity))
-        put(files, base / ("service/%sService.java" % entity), render_service(package, entity))
-        put(files, base / ("service/impl/%sServiceImpl.java" % entity), render_service_impl(package, entity))
+        put(files, base / ("controller/%sController.java" % entity.name), render_controller(package, entity))
+        put(files, base / ("mapper/%sMapper.java" % entity.name), render_mapper(package, entity, features))
+        put(files, base / ("service/%sService.java" % entity.name), render_service(package, entity))
+        put(files, base / ("service/impl/%sServiceImpl.java" % entity.name), render_service_impl(package, entity))
     put(files, test_base / ("%sContextTest.java" % names.project_class_name), java(package, None, """
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -567,7 +737,7 @@ def java(base_package, subpackage, body):
 
 
 def render_parent_pom(options, names):
-    return render_template_file("maven/root-pom.xml.tpl", {
+    pom = render_template_file("maven/root-pom.xml.tpl", {
         "SPRING_BOOT_VERSION": options.spring_boot_version,
         "BASE_PACKAGE": names.base_package,
         "PROJECT_NAME": names.project_name,
@@ -579,6 +749,34 @@ def render_parent_pom(options, names):
         "MYBATIS_PLUS_VERSION": options.mybatis_plus_version,
         "JWT_VERSION": options.jwt_version,
     })
+    return filter_parent_pom_dependencies(pom, options.features)
+
+
+def filter_parent_pom_dependencies(pom, features):
+    disabled_artifacts = []
+    if not features.security:
+        disabled_artifacts.append("spring-boot-starter-security")
+    if not features.mybatis_plus:
+        disabled_artifacts.append("mybatis-plus-spring-boot3-starter")
+    if not features.mysql:
+        disabled_artifacts.append("mysql-connector-j")
+    if not features.redis:
+        disabled_artifacts.append("spring-boot-starter-data-redis")
+    if not features.rabbitmq:
+        disabled_artifacts.append("spring-boot-starter-amqp")
+    if not features.jwt:
+        disabled_artifacts.extend(["jjwt-api", "jjwt-impl", "jjwt-jackson"])
+    for artifact_id in disabled_artifacts:
+        pom = remove_dependency_block(pom, artifact_id)
+    return pom
+
+
+def remove_dependency_block(pom, artifact_id):
+    pattern = re.compile(
+        r"\n        <dependency>\n(?:(?!        </dependency>).)*?<artifactId>%s</artifactId>.*?\n        </dependency>" % re.escape(artifact_id),
+        re.DOTALL,
+    )
+    return pattern.sub("", pom)
 
 
 def default_parent_pom_template():
@@ -757,7 +955,7 @@ def render_project_readme(options, names, entities):
         "COMMON_MODULE": names.common_module,
         "POJO_MODULE": names.pojo_module,
         "SERVER_MODULE": names.server_module,
-        "ENTITY_LIST": "\n".join("- `%s`" % entity for entity in entities),
+        "ENTITY_LIST": "\n".join("- `%s`" % entity.name for entity in entities),
         "JAVA_VERSION": options.java_version,
         "MAVEN_VERSION": options.maven_version,
         "SPRING_BOOT_VERSION": options.spring_boot_version,
@@ -853,74 +1051,117 @@ def read_template(relative_path):
 def render_schema(entities):
     chunks = []
     for entity in entities:
-        chunks.append("""CREATE TABLE IF NOT EXISTS {table} (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(128) NOT NULL,
-    description VARCHAR(512),
-    status INT NOT NULL DEFAULT 1,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);""".format(table=table_name(entity)))
+        field_lines = []
+        unique_lines = []
+        table = table_name(entity.name)
+        for field_spec in entity.fields:
+            column = column_name(field_spec.name)
+            field_lines.append("    %s %s%s," % (
+                column,
+                sql_type(field_spec.java_type),
+                " NOT NULL" if field_spec.required else "",
+            ))
+            if field_spec.unique:
+                unique_lines.append("    UNIQUE KEY uk_%s_%s (%s)" % (table, column, column))
+        lines = [
+            "CREATE TABLE IF NOT EXISTS %s (" % table,
+            "    id BIGINT PRIMARY KEY AUTO_INCREMENT,",
+        ]
+        lines.extend(field_lines)
+        lines.append("    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,")
+        if unique_lines:
+            lines.append("    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,")
+            lines.extend("%s%s" % (line, "," if index < len(unique_lines) - 1 else "")
+                         for index, line in enumerate(unique_lines))
+        else:
+            lines.append("    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+        lines.append(");")
+        chunks.append("\n".join(lines))
     return "\n\n".join(chunks)
 
 
-def render_entity(package, entity):
+def render_entity(package, entity, features):
+    imports = [
+        "import java.time.LocalDateTime;",
+        "import lombok.AllArgsConstructor;",
+        "import lombok.Builder;",
+        "import lombok.Data;",
+        "import lombok.NoArgsConstructor;",
+    ]
+    imports.extend(java_type_imports(entity.fields))
+    if features.mybatis_plus:
+        imports = [
+            "import com.baomidou.mybatisplus.annotation.IdType;",
+            "import com.baomidou.mybatisplus.annotation.TableId;",
+            "import com.baomidou.mybatisplus.annotation.TableName;",
+        ] + imports
+    annotation = '@TableName("%s")\n' % table_name(entity.name) if features.mybatis_plus else ""
+    id_annotation = "    @TableId(type = IdType.AUTO)\n" if features.mybatis_plus else ""
     return java(package, "entity", """
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import java.time.LocalDateTime;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+__IMPORTS__
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("%s")
-public class %s {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-    private String name;
-    private String description;
-    private Integer status;
+__ANNOTATION__public class __ENTITY__ {
+__ID_ANNOTATION__    private Long id;
+__FIELDS__
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-""" % (table_name(entity), entity))
+""".replace("__IMPORTS__", join_imports(imports))
+        .replace("__ANNOTATION__", annotation)
+        .replace("__ENTITY__", entity.name)
+        .replace("__ID_ANNOTATION__", id_annotation)
+        .replace("__FIELDS__", render_field_declarations(entity.fields)))
+
+
+def render_dto(package, entity):
+    imports = ["import lombok.Data;"] + java_type_imports(entity.fields)
+    return java(package, "dto", """
+__IMPORTS__
+
+@Data
+public class __ENTITY__DTO {
+__FIELDS__
+}
+""".replace("__IMPORTS__", join_imports(imports))
+        .replace("__ENTITY__", entity.name)
+        .replace("__FIELDS__", render_field_declarations(entity.fields)))
 
 
 def render_create_dto(package, entity):
+    imports = ["import lombok.Data;"] + validation_type_imports(entity.fields) + java_type_imports(entity.fields)
     return java(package, "dto", """
-import jakarta.validation.constraints.NotBlank;
-import lombok.Data;
+__IMPORTS__
 
 @Data
-public class %sCreateDTO {
-    @NotBlank
-    private String name;
-    private String description;
-    private Integer status = 1;
+public class __ENTITY__CreateDTO {
+__FIELDS__
 }
-""" % entity)
+""".replace("__IMPORTS__", join_imports(imports))
+        .replace("__ENTITY__", entity.name)
+        .replace("__FIELDS__", render_field_declarations(entity.fields, include_validation=True)))
 
 
 def render_update_dto(package, entity):
+    imports = [
+        "import jakarta.validation.constraints.NotNull;",
+        "import lombok.Data;",
+    ] + java_type_imports(entity.fields)
     return java(package, "dto", """
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+__IMPORTS__
 
 @Data
-public class %sUpdateDTO {
+public class __ENTITY__UpdateDTO {
     @NotNull
     private Long id;
-    private String name;
-    private String description;
-    private Integer status;
+__FIELDS__
 }
-""" % entity)
+""".replace("__IMPORTS__", join_imports(imports))
+        .replace("__ENTITY__", entity.name)
+        .replace("__FIELDS__", render_field_declarations(entity.fields)))
 
 
 def render_query_dto(package, entity):
@@ -933,7 +1174,7 @@ public class %sQueryDTO {
     private Integer page = 1;
     private Integer pageSize = 10;
 }
-""" % entity)
+""" % entity.name)
 
 
 def render_login_dto(package, entity, variable):
@@ -952,27 +1193,68 @@ public class %sLoginDTO {
 
 
 def render_vo(package, entity):
+    imports = [
+        "import java.time.LocalDateTime;",
+        "import lombok.Builder;",
+        "import lombok.Data;",
+    ] + java_type_imports(entity.fields, include_local_date_time=False)
     return java(package, "vo", """
-import java.time.LocalDateTime;
-import lombok.Builder;
-import lombok.Data;
+__IMPORTS__
 
 @Data
 @Builder
-public class %sVO {
+public class __ENTITY__VO {
     private Long id;
-    private String name;
-    private String description;
-    private Integer status;
+__FIELDS__
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
-""" % entity)
+""".replace("__IMPORTS__", join_imports(imports))
+        .replace("__ENTITY__", entity.name)
+        .replace("__FIELDS__", render_field_declarations(entity.fields)))
+
+
+def render_list_vo(package, entity):
+    imports = ["import lombok.Builder;", "import lombok.Data;"] + java_type_imports(list_fields(entity.fields))
+    return java(package, "vo", """
+__IMPORTS__
+
+@Data
+@Builder
+public class __ENTITY__ListVO {
+    private Long id;
+__FIELDS__
+}
+""".replace("__IMPORTS__", join_imports(imports))
+        .replace("__ENTITY__", entity.name)
+        .replace("__FIELDS__", render_field_declarations(list_fields(entity.fields))))
+
+
+def render_detail_vo(package, entity):
+    imports = [
+        "import java.time.LocalDateTime;",
+        "import lombok.Builder;",
+        "import lombok.Data;",
+    ] + java_type_imports(entity.fields, include_local_date_time=False)
+    return java(package, "vo", """
+__IMPORTS__
+
+@Data
+@Builder
+public class __ENTITY__DetailVO {
+    private Long id;
+__FIELDS__
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
+""".replace("__IMPORTS__", join_imports(imports))
+        .replace("__ENTITY__", entity.name)
+        .replace("__FIELDS__", render_field_declarations(entity.fields)))
 
 
 def render_controller(package, entity):
-    variable = to_camel_case(entity)
-    path = pluralize(table_name(entity).replace("_", "-"))
+    variable = to_camel_case(entity.name)
+    path = pluralize(table_name(entity.name).replace("_", "-"))
     body = """
 import __PACKAGE__.dto.__ENTITY__CreateDTO;
 import __PACKAGE__.dto.__ENTITY__QueryDTO;
@@ -980,7 +1262,8 @@ import __PACKAGE__.dto.__ENTITY__UpdateDTO;
 import __PACKAGE__.result.PageResult;
 import __PACKAGE__.result.Result;
 import __PACKAGE__.service.__ENTITY__Service;
-import __PACKAGE__.vo.__ENTITY__VO;
+import __PACKAGE__.vo.__ENTITY__DetailVO;
+import __PACKAGE__.vo.__ENTITY__ListVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -999,22 +1282,22 @@ public class __ENTITY__Controller {
     private final __ENTITY__Service __VARIABLE__Service;
 
     @PostMapping
-    public Result<__ENTITY__VO> create(@Valid @RequestBody __ENTITY__CreateDTO dto) {
+    public Result<__ENTITY__DetailVO> create(@Valid @RequestBody __ENTITY__CreateDTO dto) {
         return Result.success(__VARIABLE__Service.create(dto));
     }
 
     @GetMapping("/{id}")
-    public Result<__ENTITY__VO> getById(@PathVariable Long id) {
+    public Result<__ENTITY__DetailVO> getById(@PathVariable Long id) {
         return Result.success(__VARIABLE__Service.getById(id));
     }
 
     @GetMapping
-    public Result<PageResult<__ENTITY__VO>> page(__ENTITY__QueryDTO query) {
+    public Result<PageResult<__ENTITY__ListVO>> page(__ENTITY__QueryDTO query) {
         return Result.success(__VARIABLE__Service.page(query));
     }
 
     @PutMapping
-    public Result<__ENTITY__VO> update(@Valid @RequestBody __ENTITY__UpdateDTO dto) {
+    public Result<__ENTITY__DetailVO> update(@Valid @RequestBody __ENTITY__UpdateDTO dto) {
         return Result.success(__VARIABLE__Service.update(dto));
     }
 
@@ -1028,13 +1311,20 @@ public class __ENTITY__Controller {
     return java(package, "controller", replace_tokens(
         body,
         PACKAGE=package,
-        ENTITY=entity,
+        ENTITY=entity.name,
         VARIABLE=variable,
         PATH=path,
     ))
 
 
-def render_mapper(package, entity):
+def render_mapper(package, entity, features):
+    if not features.mybatis_plus:
+        return java(package, "mapper", """
+import %s.entity.%s;
+
+public interface %sMapper {
+}
+""" % (package, entity.name, entity.name))
     return java(package, "mapper", """
 import %s.entity.%s;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
@@ -1043,7 +1333,7 @@ import org.apache.ibatis.annotations.Mapper;
 @Mapper
 public interface %sMapper extends BaseMapper<%s> {
 }
-""" % (package, entity, entity, entity))
+""" % (package, entity.name, entity.name, entity.name))
 
 
 def render_service(package, entity):
@@ -1052,35 +1342,37 @@ import %s.dto.%sCreateDTO;
 import %s.dto.%sQueryDTO;
 import %s.dto.%sUpdateDTO;
 import %s.result.PageResult;
-import %s.vo.%sVO;
+import %s.vo.%sDetailVO;
+import %s.vo.%sListVO;
 
 public interface %sService {
-    %sVO create(%sCreateDTO dto);
+    %sDetailVO create(%sCreateDTO dto);
 
-    %sVO getById(Long id);
+    %sDetailVO getById(Long id);
 
-    PageResult<%sVO> page(%sQueryDTO query);
+    PageResult<%sListVO> page(%sQueryDTO query);
 
-    %sVO update(%sUpdateDTO dto);
+    %sDetailVO update(%sUpdateDTO dto);
 
     void delete(Long id);
 }
 """ % (
-        package, entity,
-        package, entity,
-        package, entity,
+        package, entity.name,
+        package, entity.name,
+        package, entity.name,
         package,
-        package, entity,
-        entity,
-        entity, entity,
-        entity,
-        entity, entity,
-        entity, entity,
+        package, entity.name,
+        package, entity.name,
+        entity.name,
+        entity.name, entity.name,
+        entity.name,
+        entity.name, entity.name,
+        entity.name, entity.name,
     ))
 
 
 def render_service_impl(package, entity):
-    variable = to_camel_case(entity)
+    variable = to_camel_case(entity.name)
     body = """
 import __PACKAGE__.dto.__ENTITY__CreateDTO;
 import __PACKAGE__.dto.__ENTITY__QueryDTO;
@@ -1089,7 +1381,8 @@ import __PACKAGE__.entity.__ENTITY__;
 import __PACKAGE__.exception.NotFoundException;
 import __PACKAGE__.result.PageResult;
 import __PACKAGE__.service.__ENTITY__Service;
-import __PACKAGE__.vo.__ENTITY__VO;
+import __PACKAGE__.vo.__ENTITY__DetailVO;
+import __PACKAGE__.vo.__ENTITY__ListVO;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -1107,35 +1400,32 @@ public class __ENTITY__ServiceImpl implements __ENTITY__Service {
     private final Map<Long, __ENTITY__> store = new ConcurrentHashMap<>();
 
     @Override
-    public __ENTITY__VO create(__ENTITY__CreateDTO dto) {
+    public __ENTITY__DetailVO create(__ENTITY__CreateDTO dto) {
         LocalDateTime now = LocalDateTime.now();
         __ENTITY__ __VARIABLE__ = __ENTITY__.builder()
                 .id(ids.getAndIncrement())
-                .name(dto.getName())
-                .description(dto.getDescription())
-                .status(dto.getStatus() == null ? 1 : dto.getStatus())
+__CREATE_ASSIGNMENTS__
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
         store.put(__VARIABLE__.getId(), __VARIABLE__);
-        return toVO(__VARIABLE__);
+        return toDetailVO(__VARIABLE__);
     }
 
     @Override
-    public __ENTITY__VO getById(Long id) {
-        return toVO(find(id));
+    public __ENTITY__DetailVO getById(Long id) {
+        return toDetailVO(find(id));
     }
 
     @Override
-    public PageResult<__ENTITY__VO> page(__ENTITY__QueryDTO query) {
+    public PageResult<__ENTITY__ListVO> page(__ENTITY__QueryDTO query) {
         int page = query.getPage() == null || query.getPage() < 1 ? 1 : query.getPage();
         int pageSize = query.getPageSize() == null || query.getPageSize() < 1 ? 10 : query.getPageSize();
         String keyword = query.getKeyword();
-        List<__ENTITY__VO> records = store.values().stream()
-                .filter(item -> !StringUtils.hasText(keyword)
-                        || item.getName().toLowerCase().contains(keyword.toLowerCase()))
+        List<__ENTITY__ListVO> records = store.values().stream()
+                .filter(item -> matchesKeyword(item, keyword))
                 .sorted(Comparator.comparing(__ENTITY__::getId))
-                .map(this::toVO)
+                .map(this::toListVO)
                 .collect(Collectors.toList());
         int fromIndex = Math.min((page - 1) * pageSize, records.size());
         int toIndex = Math.min(fromIndex + pageSize, records.size());
@@ -1143,19 +1433,11 @@ public class __ENTITY__ServiceImpl implements __ENTITY__Service {
     }
 
     @Override
-    public __ENTITY__VO update(__ENTITY__UpdateDTO dto) {
+    public __ENTITY__DetailVO update(__ENTITY__UpdateDTO dto) {
         __ENTITY__ existing = find(dto.getId());
-        if (StringUtils.hasText(dto.getName())) {
-            existing.setName(dto.getName());
-        }
-        if (dto.getDescription() != null) {
-            existing.setDescription(dto.getDescription());
-        }
-        if (dto.getStatus() != null) {
-            existing.setStatus(dto.getStatus());
-        }
+__UPDATE_ASSIGNMENTS__
         existing.setUpdatedAt(LocalDateTime.now());
-        return toVO(existing);
+        return toDetailVO(existing);
     }
 
     @Override
@@ -1173,12 +1455,21 @@ public class __ENTITY__ServiceImpl implements __ENTITY__Service {
         return item;
     }
 
-    private __ENTITY__VO toVO(__ENTITY__ item) {
-        return __ENTITY__VO.builder()
+    private boolean matchesKeyword(__ENTITY__ item, String keyword) {
+        return !StringUtils.hasText(keyword)__KEYWORD_MATCH__;
+    }
+
+    private __ENTITY__ListVO toListVO(__ENTITY__ item) {
+        return __ENTITY__ListVO.builder()
                 .id(item.getId())
-                .name(item.getName())
-                .description(item.getDescription())
-                .status(item.getStatus())
+__LIST_VO_ASSIGNMENTS__
+                .build();
+    }
+
+    private __ENTITY__DetailVO toDetailVO(__ENTITY__ item) {
+        return __ENTITY__DetailVO.builder()
+                .id(item.getId())
+__DETAIL_VO_ASSIGNMENTS__
                 .createdAt(item.getCreatedAt())
                 .updatedAt(item.getUpdatedAt())
                 .build();
@@ -1188,9 +1479,142 @@ public class __ENTITY__ServiceImpl implements __ENTITY__Service {
     return java(package, "service.impl", replace_tokens(
         body,
         PACKAGE=package,
-        ENTITY=entity,
+        ENTITY=entity.name,
         VARIABLE=variable,
+        CREATE_ASSIGNMENTS=builder_assignments_from_dto(entity.fields),
+        UPDATE_ASSIGNMENTS=update_assignments_from_dto(entity.fields),
+        KEYWORD_MATCH=keyword_match_expression(entity.fields),
+        LIST_VO_ASSIGNMENTS=builder_assignments_from_item(list_fields(entity.fields)),
+        DETAIL_VO_ASSIGNMENTS=builder_assignments_from_item(entity.fields),
     ))
+
+
+def render_field_declarations(fields, include_validation=False):
+    lines = []
+    for field_spec in fields:
+        if include_validation and field_spec.required:
+            annotation = validation_annotation(field_spec.java_type)
+            if annotation:
+                lines.append("    %s" % annotation)
+        lines.append("    private %s %s;" % (field_spec.java_type, field_spec.name))
+    return "\n".join(lines)
+
+
+def java_type_imports(fields, include_local_date_time=True):
+    imports = []
+    type_imports = {
+        "BigDecimal": "import java.math.BigDecimal;",
+        "LocalDate": "import java.time.LocalDate;",
+        "LocalDateTime": "import java.time.LocalDateTime;",
+    }
+    for field_spec in fields:
+        if field_spec.java_type == "LocalDateTime" and not include_local_date_time:
+            continue
+        if field_spec.java_type in type_imports:
+            imports.append(type_imports[field_spec.java_type])
+    return imports
+
+
+def validation_type_imports(fields):
+    imports = []
+    for field_spec in fields:
+        if not field_spec.required:
+            continue
+        if field_spec.java_type == "String":
+            imports.append("import jakarta.validation.constraints.NotBlank;")
+        else:
+            imports.append("import jakarta.validation.constraints.NotNull;")
+    return imports
+
+
+def validation_annotation(java_type):
+    if java_type == "String":
+        return "@NotBlank"
+    return "@NotNull"
+
+
+def join_imports(imports):
+    seen = []
+    for import_line in imports:
+        if import_line and import_line not in seen:
+            seen.append(import_line)
+    return "\n".join(seen)
+
+
+def list_fields(fields):
+    return fields[:4]
+
+
+def column_name(field_name):
+    words = re.findall(r"[A-Z]?[a-z0-9]+|[A-Z]+(?=[A-Z]|$)", field_name)
+    return "_".join(word.lower() for word in words if word)
+
+
+def sql_type(java_type):
+    mapping = {
+        "String": "VARCHAR(255)",
+        "Integer": "INT",
+        "Long": "BIGINT",
+        "BigDecimal": "DECIMAL(18, 2)",
+        "LocalDateTime": "DATETIME",
+        "LocalDate": "DATE",
+        "Boolean": "TINYINT(1)",
+        "Double": "DOUBLE",
+    }
+    return mapping.get(java_type, "VARCHAR(255)")
+
+
+def getter_name(field_spec):
+    prefix = "get"
+    return "%s%s" % (prefix, field_spec.name[:1].upper() + field_spec.name[1:])
+
+
+def setter_name(field_spec):
+    return "set%s%s" % (field_spec.name[:1].upper(), field_spec.name[1:])
+
+
+def builder_assignments_from_dto(fields):
+    return "\n".join(
+        "                .%s(dto.%s())" % (field_spec.name, getter_name(field_spec))
+        for field_spec in fields
+    )
+
+
+def builder_assignments_from_item(fields):
+    return "\n".join(
+        "                .%s(item.%s())" % (field_spec.name, getter_name(field_spec))
+        for field_spec in fields
+    )
+
+
+def update_assignments_from_dto(fields):
+    blocks = []
+    for field_spec in fields:
+        getter = getter_name(field_spec)
+        setter = setter_name(field_spec)
+        if field_spec.java_type == "String":
+            blocks.append("""        if (StringUtils.hasText(dto.%s())) {
+            existing.%s(dto.%s());
+        }""" % (getter, setter, getter))
+        else:
+            blocks.append("""        if (dto.%s() != null) {
+            existing.%s(dto.%s());
+        }""" % (getter, setter, getter))
+    return "\n".join(blocks)
+
+
+def keyword_match_expression(fields):
+    string_fields = [field_spec for field_spec in fields if field_spec.java_type == "String"]
+    if not string_fields:
+        return ""
+    checks = [
+        "\n                || (item.%s() != null && item.%s().toLowerCase().contains(keyword.toLowerCase()))" % (
+            getter_name(field_spec),
+            getter_name(field_spec),
+        )
+        for field_spec in string_fields[:3]
+    ]
+    return "".join(checks)
 
 
 def replace_tokens(template, **values):

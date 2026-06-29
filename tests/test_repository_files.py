@@ -21,6 +21,8 @@ def test_repository_readme_documents_cli_and_skill_usage():
     assert "$springboot-project-generator" in readme
     assert "mvn test" in readme
     assert "project.yaml" in readme
+    assert "fields:" in readme
+    assert "features:" in readme
 
 
 def test_repository_contains_external_templates():
@@ -43,3 +45,16 @@ def test_github_actions_workflow_runs_python_and_generated_project_checks():
     assert "python3 -m pytest" in content
     assert "springboot_project_generator generate" in content
     assert "mvn package" in content
+
+
+def test_structured_example_config_is_documented():
+    example = ROOT / "examples/club-project.yaml"
+    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text()
+
+    content = example.read_text()
+
+    assert "fields:" in content
+    assert "features:" in content
+    assert "roles:" in content
+    assert "字段级生成" in skill
+    assert "技术栈开关" in skill

@@ -165,3 +165,173 @@ entities:
         project_dir
         / "library-server/src/main/java/com/acme/library/controller/BorrowRecordController.java"
     ).exists()
+
+
+def test_load_project_config_supports_structured_entities_features_and_roles(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: club
+basePackage: com.acme.club
+description: club backend with member management
+outputDir: .
+roles:
+  - admin
+  - member
+features:
+  security: true
+  jwt: true
+  redis: false
+  rabbitmq: false
+  mysql: true
+  mybatisPlus: true
+entities:
+  - name: Member
+    fields:
+      - name: phone
+        type: String
+        required: true
+        unique: true
+      - name: balance
+        type: BigDecimal
+      - name: joinedAt
+        type: LocalDateTime
+      - name: active
+        type: Boolean
+""".strip()
+    )
+
+    options = load_project_config(config)
+
+    assert options.roles == ["admin", "member"]
+    assert options.features.security is True
+    assert options.features.redis is False
+    assert options.features.rabbitmq is False
+    assert options.features.mybatis_plus is True
+    assert options.entities[0].name == "Member"
+    assert options.entities[0].fields[0].name == "phone"
+    assert options.entities[0].fields[0].required is True
+    assert options.entities[0].fields[0].unique is True
+    assert options.entities[0].fields[1].java_type == "BigDecimal"
+
+
+def test_structured_entity_fields_drive_java_dto_vo_service_and_schema(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: club
+basePackage: com.acme.club
+description: club backend with member management
+outputDir: .
+entities:
+  - name: Member
+    fields:
+      - name: phone
+        type: String
+        required: true
+        unique: true
+      - name: balance
+        type: BigDecimal
+      - name: joinedAt
+        type: LocalDateTime
+      - name: active
+        type: Boolean
+""".strip()
+    )
+
+    project_dir = generate_project(load_project_config(config))
+
+    entity = (
+        project_dir / "club-pojo/src/main/java/com/acme/club/entity/Member.java"
+    ).read_text()
+    create_dto = (
+        project_dir / "club-pojo/src/main/java/com/acme/club/dto/MemberCreateDTO.java"
+    ).read_text()
+    common_dto = (
+        project_dir / "club-pojo/src/main/java/com/acme/club/dto/MemberDTO.java"
+    ).read_text()
+    list_vo = (
+        project_dir / "club-pojo/src/main/java/com/acme/club/vo/MemberListVO.java"
+    ).read_text()
+    detail_vo = (
+        project_dir / "club-pojo/src/main/java/com/acme/club/vo/MemberDetailVO.java"
+    ).read_text()
+    controller = (
+        project_dir
+        / "club-server/src/main/java/com/acme/club/controller/MemberController.java"
+    ).read_text()
+    service_impl = (
+        project_dir
+        / "club-server/src/main/java/com/acme/club/service/impl/MemberServiceImpl.java"
+    ).read_text()
+    schema = (project_dir / "club-server/src/main/resources/db/schema.sql").read_text()
+
+    assert "import java.math.BigDecimal;" in entity
+    assert "private String phone;" in entity
+    assert "private BigDecimal balance;" in entity
+    assert "private LocalDateTime joinedAt;" in entity
+    assert "private Boolean active;" in entity
+    assert "@NotBlank" in create_dto
+    assert "private String phone;" in create_dto
+    assert "public class MemberDTO" in common_dto
+    assert "public class MemberListVO" in list_vo
+    assert "public class MemberDetailVO" in detail_vo
+    assert "Result<MemberDetailVO>" in controller
+    assert "PageResult<MemberListVO>" in controller
+    assert ".phone(dto.getPhone())" in service_impl
+    assert "existing.setBalance(dto.getBalance());" in service_impl
+    assert ".phone(item.getPhone())" in service_impl
+    assert "phone VARCHAR(255) NOT NULL" in schema
+    assert "balance DECIMAL(18, 2)" in schema
+    assert "joined_at DATETIME" in schema
+    assert "active TINYINT(1)" in schema
+    assert "UNIQUE KEY uk_members_phone (phone)" in schema
+
+
+def test_feature_toggles_remove_dependencies_and_matching_java_code(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: lean
+basePackage: com.acme.lean
+description: lean backend
+outputDir: .
+features:
+  security: false
+  jwt: false
+  redis: false
+  rabbitmq: false
+  mysql: false
+  mybatisPlus: false
+entities:
+  - name: Task
+    fields:
+      - name: title
+        type: String
+        required: true
+""".strip()
+    )
+
+    project_dir = generate_project(load_project_config(config))
+
+    pom = (project_dir / "pom.xml").read_text()
+    entity = (
+        project_dir / "lean-pojo/src/main/java/com/acme/lean/entity/Task.java"
+    ).read_text()
+    mapper = (
+        project_dir / "lean-server/src/main/java/com/acme/lean/mapper/TaskMapper.java"
+    ).read_text()
+
+    assert "spring-boot-starter-security" not in pom
+    assert "mybatis-plus-spring-boot3-starter" not in pom
+    assert "mysql-connector-j" not in pom
+    assert "spring-boot-starter-data-redis" not in pom
+    assert "spring-boot-starter-amqp" not in pom
+    assert "jjwt-api" not in pom
+    assert "TableName" not in entity
+    assert "TableId" not in entity
+    assert "BaseMapper" not in mapper
+    assert "org.apache.ibatis.annotations.Mapper" not in mapper
+    assert not (
+        project_dir / "lean-server/src/main/java/com/acme/lean/config/SecurityConfig.java"
+    ).exists()
