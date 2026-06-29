@@ -34,6 +34,12 @@ python3 -m springboot_project_generator generate \
 
 只有在必要信息已经明确时才使用 `--no-interactive`。使用 `--dry-run` 可以只展示生成计划，不写入文件。
 
+复杂项目优先生成 `project.yaml`，再运行：
+
+```bash
+python3 -m springboot_project_generator generate --config project.yaml --no-interactive
+```
+
 ## 默认规则
 
 - 项目结构：Maven 父工程，加 `<project>-common`、`<project>-pojo`、`<project>-server` 三个模块。
@@ -41,6 +47,7 @@ python3 -m springboot_project_generator generate \
 - 业务生成范围：1-3 个核心实体，并生成 entity/dto/vo/controller/service/mapper CRUD 骨架。
 - 外部服务：生成配置默认不要求首次启动时必须连接 MySQL、Redis 或 RabbitMQ。
 - 已存在目标目录：不要覆盖；让用户选择新的输出目录或项目名。
+- 模板：Maven、项目 README、application.yml 已外置在 `templates/`，修改模板优先改模板文件。
 
 ## 验证
 

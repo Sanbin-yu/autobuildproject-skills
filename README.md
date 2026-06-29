@@ -25,6 +25,24 @@ python3 -m springboot_project_generator generate \
   --no-interactive
 ```
 
+也可以使用 `project.yaml`：
+
+```yaml
+projectName: gym
+basePackage: com.acme.gym
+description: gym membership backend with member and trainer management
+outputDir: ./examples
+javaVersion: "21"
+mavenVersion: 3.9.9
+entities:
+  - Member
+  - Trainer
+```
+
+```bash
+python3 -m springboot_project_generator generate --config project.yaml --no-interactive
+```
+
 只查看生成计划，不写入文件：
 
 ```bash
@@ -46,6 +64,8 @@ python3 -m springboot_project_generator generate \
 ```bash
 python3 -m pytest
 ```
+
+仓库已包含 GitHub Actions：每次 push 或 PR 会运行 Python 测试、生成示例项目，并对示例项目执行 `mvn package`。
 
 验证生成出来的 Java 项目：
 

@@ -1,4 +1,3 @@
-import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -142,6 +141,69 @@ def detect_maven_version():
         return None
     match = re.search(r"Apache Maven ([0-9]+(?:\.[0-9]+)+)", result.stdout)
     return match.group(1) if match else None
+
+
+def load_project_config(config_path):
+    config_path = Path(config_path)
+    data = parse_simple_yaml(config_path.read_text(encoding="utf-8"))
+    base_dir = config_path.parent
+    output_dir = Path(data.get("outputDir", data.get("output_dir", ".")))
+    if not output_dir.is_absolute():
+        output_dir = base_dir / output_dir
+    return ProjectOptions(
+        project_name=require_config(data, "projectName"),
+        base_package=data.get("basePackage"),
+        description=data.get("description", ""),
+        output_dir=output_dir,
+        entities=data.get("entities", []),
+        java_version=str(data.get("javaVersion", "21")),
+        maven_version=str(data.get("mavenVersion", "3.9")),
+        spring_boot_version=str(data.get("springBootVersion", "3.3.5")),
+        mybatis_plus_version=str(data.get("mybatisPlusVersion", "3.5.7")),
+        jwt_version=str(data.get("jwtVersion", "0.12.6")),
+    )
+
+
+def require_config(data, key):
+    if key not in data or data[key] in ("", None):
+        raise ValueError("Missing required config key: %s" % key)
+    return data[key]
+
+
+def parse_simple_yaml(text):
+    data = {}
+    current_list_key = None
+    for raw_line in text.splitlines():
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+        stripped = raw_line.strip()
+        if stripped.startswith("- "):
+            if not current_list_key:
+                raise ValueError("List item found before a list key")
+            data[current_list_key].append(parse_scalar(stripped[2:].strip()))
+            continue
+        current_list_key = None
+        if ":" not in stripped:
+            raise ValueError("Invalid config line: %s" % raw_line)
+        key, value = stripped.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if value == "":
+            data[key] = []
+            current_list_key = key
+        else:
+            data[key] = parse_scalar(value)
+    return data
+
+
+def parse_scalar(value):
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    if value.lower() == "true":
+        return True
+    if value.lower() == "false":
+        return False
+    return value
 
 
 def describe_plan(options):
@@ -505,6 +567,21 @@ def java(base_package, subpackage, body):
 
 
 def render_parent_pom(options, names):
+    return render_template_file("maven/root-pom.xml.tpl", {
+        "SPRING_BOOT_VERSION": options.spring_boot_version,
+        "BASE_PACKAGE": names.base_package,
+        "PROJECT_NAME": names.project_name,
+        "DESCRIPTION": escape_xml(options.description),
+        "COMMON_MODULE": names.common_module,
+        "POJO_MODULE": names.pojo_module,
+        "SERVER_MODULE": names.server_module,
+        "JAVA_VERSION": options.java_version,
+        "MYBATIS_PLUS_VERSION": options.mybatis_plus_version,
+        "JWT_VERSION": options.jwt_version,
+    })
+
+
+def default_parent_pom_template():
     return """<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -514,27 +591,27 @@ def render_parent_pom(options, names):
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>{spring_boot_version}</version>
+        <version>__SPRING_BOOT_VERSION__</version>
         <relativePath/>
     </parent>
 
-    <groupId>{base_package}</groupId>
-    <artifactId>{project_name}</artifactId>
+    <groupId>__BASE_PACKAGE__</groupId>
+    <artifactId>__PROJECT_NAME__</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>{project_name}</name>
-    <description>{description}</description>
+    <name>__PROJECT_NAME__</name>
+    <description>__DESCRIPTION__</description>
 
     <modules>
-        <module>{common_module}</module>
-        <module>{pojo_module}</module>
-        <module>{server_module}</module>
+        <module>__COMMON_MODULE__</module>
+        <module>__POJO_MODULE__</module>
+        <module>__SERVER_MODULE__</module>
     </modules>
 
     <properties>
-        <java.version>{java_version}</java.version>
-        <mybatis-plus.version>{mybatis_plus_version}</mybatis-plus.version>
-        <jjwt.version>{jwt_version}</jjwt.version>
+        <java.version>__JAVA_VERSION__</java.version>
+        <mybatis-plus.version>__MYBATIS_PLUS_VERSION__</mybatis-plus.version>
+        <jjwt.version>__JWT_VERSION__</jjwt.version>
     </properties>
 
     <dependencies>
@@ -597,18 +674,7 @@ def render_parent_pom(options, names):
         </dependency>
     </dependencies>
 </project>
-""".format(
-        spring_boot_version=options.spring_boot_version,
-        base_package=names.base_package,
-        project_name=names.project_name,
-        description=escape_xml(options.description),
-        common_module=names.common_module,
-        pojo_module=names.pojo_module,
-        server_module=names.server_module,
-        java_version=options.java_version,
-        mybatis_plus_version=options.mybatis_plus_version,
-        jwt_version=options.jwt_version,
-    )
+"""
 
 
 def render_common_pom(names):
@@ -685,31 +751,46 @@ logs/
 
 
 def render_project_readme(options, names, entities):
-    return """# {project_name}
+    return render_template_file("project/README.md.tpl", {
+        "PROJECT_NAME": names.project_name,
+        "DESCRIPTION": options.description,
+        "COMMON_MODULE": names.common_module,
+        "POJO_MODULE": names.pojo_module,
+        "SERVER_MODULE": names.server_module,
+        "ENTITY_LIST": "\n".join("- `%s`" % entity for entity in entities),
+        "JAVA_VERSION": options.java_version,
+        "MAVEN_VERSION": options.maven_version,
+        "SPRING_BOOT_VERSION": options.spring_boot_version,
+    })
 
-{description}
+
+def default_project_readme_template():
+    return """# __PROJECT_NAME__
+
+__DESCRIPTION__
 
 ## Modules
 
-- `{common_module}`: constants, context, enums, exceptions, JSON helpers, properties, result wrappers, utilities.
-- `{pojo_module}`: entity, DTO, and VO classes.
-- `{server_module}`: Spring Boot application, controllers, services, mappers, handlers, interceptors, and configuration.
+- `__COMMON_MODULE__`: constants, context, enums, exceptions, JSON helpers, properties, result wrappers, utilities.
+- `__POJO_MODULE__`: entity, DTO, and VO classes.
+- `__SERVER_MODULE__`: Spring Boot application, controllers, services, mappers, handlers, interceptors, and configuration.
 
 ## Generated Business Objects
 
-{entity_list}
+__ENTITY_LIST__
 
 ## Environment
 
-- Java: {java_version}
-- Maven: {maven_version}
-- Spring Boot: {spring_boot_version}
+- Java: __JAVA_VERSION__
+- Maven: __MAVEN_VERSION__
+- Spring Boot: __SPRING_BOOT_VERSION__
 
 ## Run
 
 ```bash
 mvn test
-mvn -pl {server_module} spring-boot:run
+mvn package
+mvn -pl __SERVER_MODULE__ spring-boot:run
 ```
 
 The generated project starts without requiring live MySQL, Redis, or RabbitMQ services. Database persistence is scaffolded with mapper interfaces and `src/main/resources/db/schema.sql`; wire real persistence after confirming the schema.
@@ -720,26 +801,22 @@ The generated project starts without requiring live MySQL, Redis, or RabbitMQ se
 - `app.jwt.secret`: replace before production use.
 - `app.redis.enabled`: default `false`.
 - `app.rabbitmq.enabled`: default `false`.
-""".format(
-        project_name=names.project_name,
-        description=options.description,
-        common_module=names.common_module,
-        pojo_module=names.pojo_module,
-        server_module=names.server_module,
-        entity_list="\n".join("- `%s`" % entity for entity in entities),
-        java_version=options.java_version,
-        maven_version=options.maven_version,
-        spring_boot_version=options.spring_boot_version,
-    )
+"""
 
 
 def render_application_yml(options, names):
+    return render_template_file("resources/application.yml.tpl", {
+        "PROJECT_NAME": names.project_name,
+    })
+
+
+def default_application_yml_template():
     return """server:
   port: 8080
 
 spring:
   application:
-    name: {project_name}
+    name: __PROJECT_NAME__
 
 app:
   security:
@@ -751,7 +828,26 @@ app:
     enabled: false
   rabbitmq:
     enabled: false
-""".format(project_name=names.project_name)
+"""
+
+
+def render_template_file(relative_path, values):
+    template = read_template(relative_path)
+    return replace_tokens(template, **values)
+
+
+def read_template(relative_path):
+    template_path = Path(__file__).resolve().parents[1] / "templates" / relative_path
+    if template_path.exists():
+        return template_path.read_text(encoding="utf-8")
+    defaults = {
+        "maven/root-pom.xml.tpl": default_parent_pom_template,
+        "project/README.md.tpl": default_project_readme_template,
+        "resources/application.yml.tpl": default_application_yml_template,
+    }
+    if relative_path not in defaults:
+        raise FileNotFoundError("Template not found: %s" % relative_path)
+    return defaults[relative_path]()
 
 
 def render_schema(entities):

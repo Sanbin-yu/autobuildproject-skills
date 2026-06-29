@@ -6,6 +6,7 @@ from springboot_project_generator.core import (
     ProjectOptions,
     derive_names,
     generate_project,
+    load_project_config,
 )
 
 
@@ -111,3 +112,56 @@ def test_generate_project_refuses_existing_target_directory(tmp_path):
     with pytest.raises(FileExistsError):
         generate_project(options)
 
+
+def test_load_project_config_supports_yaml_fields(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: library-system
+basePackage: com.acme.library
+description: library backend with book and reader management
+outputDir: generated
+javaVersion: "21"
+mavenVersion: 3.9.9
+springBootVersion: 3.3.5
+entities:
+  - Book
+  - Reader
+""".strip()
+    )
+
+    options = load_project_config(config)
+
+    assert options.project_name == "library-system"
+    assert options.base_package == "com.acme.library"
+    assert options.output_dir == tmp_path / "generated"
+    assert options.entities == ["Book", "Reader"]
+    assert options.java_version == "21"
+    assert options.maven_version == "3.9.9"
+
+
+def test_generate_project_from_config_creates_expected_entities(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: library
+basePackage: com.acme.library
+description: library backend
+outputDir: .
+entities:
+  - Book
+  - BorrowRecord
+""".strip()
+    )
+
+    options = load_project_config(config)
+    project_dir = generate_project(options)
+
+    assert (
+        project_dir
+        / "library-pojo/src/main/java/com/acme/library/entity/BorrowRecord.java"
+    ).exists()
+    assert (
+        project_dir
+        / "library-server/src/main/java/com/acme/library/controller/BorrowRecordController.java"
+    ).exists()

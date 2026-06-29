@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 设置 Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: 运行 Python 测试
+        run: python3 -m pytest
+
+      - name: 生成示例项目
+        run: |
+          python3 -m springboot_project_generator generate \
+            --project-name ci-demo \
+            --base-package com.example.cidemo \
+            --description "ci demo backend with product management" \
+            --entity Product \
+            --output-dir /tmp \
+            --java-version 21 \
+            --maven-version 3.9.9 \
+            --no-interactive
+
+      - name: 验证生成项目
+        working-directory: /tmp/ci-demo
+        run: mvn package
+

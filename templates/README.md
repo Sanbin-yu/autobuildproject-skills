@@ -1,3 +1,9 @@
 # 模板
 
-v1 生成器暂时把 Java 和 Maven 模板保留在 Python 渲染函数里，让 CLI 保持自包含。随着项目继续完善，这个目录用于逐步外置模板文件。
+这个目录存放已经外置的生成模板。
+
+- `maven/root-pom.xml.tpl`：Maven 父工程模板
+- `project/README.md.tpl`：生成项目 README 模板
+- `resources/application.yml.tpl`：server 模块 application.yml 模板
+
+模板使用 `__TOKEN__` 占位符，由 Python 生成器替换。复杂 Java 类模板后续也可以逐步从 `core.py` 拆到这里。
