@@ -1,0 +1,7 @@
+interface:
+  display_name: "Spring Boot Generator"
+  short_description: "Generate multi-module Spring Boot projects"
+  default_prompt: "Use $springboot-project-generator to create a Maven multi-module Spring Boot backend project."
+policy:
+  allow_implicit_invocation: true
+
