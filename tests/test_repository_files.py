@@ -1,3 +1,6 @@
+import os
+import stat
+import subprocess
 from pathlib import Path
 
 
@@ -58,3 +61,27 @@ def test_structured_example_config_is_documented():
     assert "roles:" in content
     assert "字段级生成" in skill
     assert "技术栈开关" in skill
+
+
+def test_install_skill_script_links_skill_into_codex_home(tmp_path):
+    script = ROOT / "scripts/install-skill.sh"
+
+    assert script.exists()
+    assert script.stat().st_mode & stat.S_IXUSR
+
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(tmp_path / "codex-home")
+    result = subprocess.run(
+        [str(script)],
+        cwd=str(ROOT),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+
+    link = tmp_path / "codex-home/skills/springboot-project-generator"
+    assert result.returncode == 0, result.stderr
+    assert link.is_symlink()
+    assert link.resolve() == ROOT / "skills/springboot-project-generator"
+    assert "springboot-project-generator" in result.stdout

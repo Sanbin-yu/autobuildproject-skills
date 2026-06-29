@@ -100,7 +100,19 @@ python3 -m springboot_project_generator generate \
 
 ## Codex Skill 使用方式
 
-把 `skills/springboot-project-generator` 复制或软链接到你的 Codex skills 目录，然后让 Codex 使用 `$springboot-project-generator` 创建 Spring Boot 后端项目。
+运行安装脚本，把 `skills/springboot-project-generator` 软链接到你的 Codex skills 目录：
+
+```bash
+./scripts/install-skill.sh
+```
+
+默认安装到 `~/.codex/skills/springboot-project-generator`。也可以通过 `CODEX_HOME` 指定 Codex 目录：
+
+```bash
+CODEX_HOME=/path/to/.codex ./scripts/install-skill.sh
+```
+
+安装后，让 Codex 使用 `$springboot-project-generator` 创建 Spring Boot 后端项目。
 
 这个 skill 会先询问项目名称、包名、业务方向、核心实体、角色权限、数据库/缓存/消息队列需求等信息，再确认本地 Java/Maven 版本，最后调用 Python CLI 生成项目。
 
