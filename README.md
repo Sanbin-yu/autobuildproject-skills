@@ -1,22 +1,18 @@
-# Spring Boot Project Generator Skill
+# Spring Boot 项目生成器 Skill
 
-Open-source-ready Codex skill and Python CLI for generating Maven multi-module
-Spring Boot backend projects.
+这是一个面向 Codex 的 skill，同时提供 Python CLI，用于快速生成 Maven 多模块 Spring Boot 后端项目。
 
-## What It Generates
+## 可以生成什么
 
-- Parent Maven project with `<project>-common`, `<project>-pojo`, and `<project>-server`
-- Common backend dependencies: Web, Validation, Security, MyBatis-Plus, MySQL,
-  Lombok, JWT, Redis, RabbitMQ, and Test
-- Common module packages for constants, context, enums, exceptions, JSON,
-  properties, result wrappers, and utilities
-- POJO module packages for `entity`, `dto`, and `vo`
-- Server module packages for app entrypoint, config, controller, handler,
-  interceptor, mapper, service, and service implementation
-- 1-3 generated business objects with basic CRUD scaffolding
-- `schema.sql` and a generated project README
+- Maven 父工程，以及 `<project>-common`、`<project>-pojo`、`<project>-server` 三个模块
+- 常用后端依赖：Web、Validation、Security、MyBatis-Plus、MySQL、Lombok、JWT、Redis、RabbitMQ、Test
+- common 模块：constant、context、enumeration、exception、json、properties、result、utils
+- pojo 模块：`entity`、`dto`、`vo`
+- server 模块：启动类、config、controller、handler、interceptor、mapper、service、service.impl
+- 根据项目方向生成 1-3 个核心业务对象，并生成基础 CRUD 骨架
+- `schema.sql` 数据库初稿和生成项目自己的 README
 
-## CLI Usage
+## CLI 使用方式
 
 ```bash
 python3 -m springboot_project_generator generate \
@@ -29,7 +25,7 @@ python3 -m springboot_project_generator generate \
   --no-interactive
 ```
 
-Dry run:
+只查看生成计划，不写入文件：
 
 ```bash
 python3 -m springboot_project_generator generate \
@@ -39,22 +35,19 @@ python3 -m springboot_project_generator generate \
   --no-interactive
 ```
 
-## Codex Skill Usage
+## Codex Skill 使用方式
 
-Copy or symlink `skills/springboot-project-generator` into your Codex skills
-directory, then ask Codex to use `$springboot-project-generator` to create a
-Spring Boot backend project.
+把 `skills/springboot-project-generator` 复制或软链接到你的 Codex skills 目录，然后让 Codex 使用 `$springboot-project-generator` 创建 Spring Boot 后端项目。
 
-The skill asks a short project diagnosis before generation, confirms local
-Java/Maven versions, then calls the Python CLI.
+这个 skill 会先询问项目名称、包名、业务方向、核心实体、角色权限、数据库/缓存/消息队列需求等信息，再确认本地 Java/Maven 版本，最后调用 Python CLI 生成项目。
 
-## Development
+## 开发与测试
 
 ```bash
 python3 -m pytest
 ```
 
-To verify generated Java output:
+验证生成出来的 Java 项目：
 
 ```bash
 python3 -m springboot_project_generator generate \
@@ -64,5 +57,5 @@ python3 -m springboot_project_generator generate \
   --no-interactive
 cd /tmp/demo
 mvn test
+mvn package
 ```
-

@@ -10,7 +10,7 @@ def test_skill_metadata_exists_and_mentions_diagnosis():
     content = skill.read_text()
 
     assert "name: springboot-project-generator" in content
-    assert "project diagnosis" in content
+    assert "项目问诊" in content
     assert "python3 -m springboot_project_generator generate" in content
 
 
@@ -20,4 +20,3 @@ def test_repository_readme_documents_cli_and_skill_usage():
     assert "python3 -m springboot_project_generator generate" in readme
     assert "$springboot-project-generator" in readme
     assert "mvn test" in readme
-

@@ -1,26 +1,26 @@
 ---
 name: springboot-project-generator
-description: Use when creating or scaffolding Maven multi-module Spring Boot backend projects, especially when the user wants common/pojo/server modules, backend dependencies, CRUD scaffolding, Java packages, pom.xml files, schema.sql, or a runnable starter backend generated from a project idea.
+description: Use when creating or scaffolding Maven multi-module Spring Boot backend projects, common/pojo/server modules, backend dependencies, CRUD scaffolding, Java packages, pom.xml files, schema.sql, runnable starter backend, Spring Boot 项目脚手架, 多模块后端项目.
 ---
 
-# Spring Boot Project Generator
+# Spring Boot 项目生成器
 
-## Overview
+## 概览
 
-Use the bundled Python CLI as the generation engine. First understand the user's project, then confirm environment and generation options, then run the CLI.
+使用仓库内置的 Python CLI 作为稳定生成引擎。先理解用户想做什么项目，再确认环境和生成选项，最后运行 CLI。
 
-## Workflow
+## 工作流程
 
-1. Ask a concise project diagnosis before generating:
-   - project name
-   - base package, or use `com.example.<project>`
-   - project direction and target users
-   - 1-3 core business objects
-   - roles or security expectations
-   - database/cache/message queue needs
-   - output directory
-2. Detect local versions with `java -version` and `mvn -version`; ask the user to confirm or override when the versions matter.
-3. Run the generator from the repository root:
+1. 生成前先做简短项目问诊：
+   - 项目名称
+   - 基础包名，或者默认使用 `com.example.<project>`
+   - 项目方向和目标用户
+   - 1-3 个核心业务对象
+   - 角色权限或安全需求
+   - 数据库、缓存、消息队列需求
+   - 输出目录
+2. 使用 `java -version` 和 `mvn -version` 检测本地版本；版本会影响生成结果时，让用户确认或覆盖。
+3. 在仓库根目录运行生成器：
 
 ```bash
 python3 -m springboot_project_generator generate \
@@ -32,34 +32,34 @@ python3 -m springboot_project_generator generate \
   --output-dir <directory>
 ```
 
-Use `--no-interactive` only after the needed answers are known. Use `--dry-run` to show the plan without writing files.
+只有在必要信息已经明确时才使用 `--no-interactive`。使用 `--dry-run` 可以只展示生成计划，不写入文件。
 
-## Defaults
+## 默认规则
 
-- Project shape: parent Maven project plus `<project>-common`, `<project>-pojo`, `<project>-server`.
-- Dependencies: Web, Validation, Security, MyBatis-Plus, MySQL, Lombok, JWT, Redis, RabbitMQ, Test.
-- Generated business scope: 1-3 core entities with entity/dto/vo/controller/service/mapper CRUD scaffolding.
-- External services: generated config defaults should not require live MySQL, Redis, or RabbitMQ for first startup.
-- Existing target directory: do not overwrite; choose a new output directory or project name.
+- 项目结构：Maven 父工程，加 `<project>-common`、`<project>-pojo`、`<project>-server` 三个模块。
+- 依赖：Web、Validation、Security、MyBatis-Plus、MySQL、Lombok、JWT、Redis、RabbitMQ、Test。
+- 业务生成范围：1-3 个核心实体，并生成 entity/dto/vo/controller/service/mapper CRUD 骨架。
+- 外部服务：生成配置默认不要求首次启动时必须连接 MySQL、Redis 或 RabbitMQ。
+- 已存在目标目录：不要覆盖；让用户选择新的输出目录或项目名。
 
-## Verification
+## 验证
 
-After generation, run:
+生成后运行：
 
 ```bash
 cd <generated-project>
 mvn test
+mvn package
 ```
 
-If Maven fails because dependencies cannot be downloaded, report the network/dependency issue separately from generator correctness.
+如果 Maven 因依赖下载失败而报错，需要把网络或依赖仓库问题和生成器正确性分开说明。
 
-## Common Mistakes
+## 常见错误
 
-| Mistake | Fix |
+| 错误 | 处理方式 |
 | --- | --- |
-| Generating before asking what project the user wants | Ask the short diagnosis first |
-| Writing files by hand instead of using the CLI | Call the bundled generator |
-| Guessing too many entities | Keep v1 to 1-3 core business objects |
-| Overwriting an existing project | Stop and ask for a new target |
-| Treating `schema.sql` as final design | Present it as a modifiable draft |
-
+| 还没问清用户要做什么项目就开始生成 | 先做简短项目问诊 |
+| 手写文件而不是调用 CLI | 调用仓库内置生成器 |
+| 一次猜太多实体 | v1 保持 1-3 个核心业务对象 |
+| 覆盖已有项目 | 停下来，让用户换目标目录或项目名 |
+| 把 `schema.sql` 当成最终数据库设计 | 明确说明它只是可修改的初稿 |

@@ -1,6 +1,3 @@
-# Templates
+# 模板
 
-The v1 generator keeps Java and Maven templates in Python rendering functions so the
-CLI can stay self-contained. This directory is reserved for externalized templates as
-the project grows.
-
+v1 生成器暂时把 Java 和 Maven 模板保留在 Python 渲染函数里，让 CLI 保持自包含。随着项目继续完善，这个目录用于逐步外置模板文件。

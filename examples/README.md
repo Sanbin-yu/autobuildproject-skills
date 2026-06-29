@@ -1,5 +1,3 @@
-# Examples
+# 示例
 
-Generated projects can be placed here during manual testing. The automated
-tests create temporary projects instead of committing generated output.
-
+手动测试时可以把生成出来的项目放到这里。自动化测试会生成临时项目，不会把生成物提交到仓库。
