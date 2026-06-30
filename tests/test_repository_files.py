@@ -63,6 +63,25 @@ def test_structured_example_config_is_documented():
     assert "技术栈开关" in skill
 
 
+def test_skill_documents_diagnosis_questions_and_yaml_draft_rule():
+    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text()
+
+    expected_questions = [
+        "项目类型",
+        "核心业务对象",
+        "对象字段",
+        "用户角色",
+        "数据持久化",
+        "外部服务",
+        "安全要求",
+    ]
+
+    for question in expected_questions:
+        assert question in skill
+    assert "先整理 project.yaml 草稿" in skill
+    assert "不要直接跳过问诊运行 CLI" in skill
+
+
 def test_install_skill_script_links_skill_into_codex_home(tmp_path):
     script = ROOT / "scripts/install-skill.sh"
 

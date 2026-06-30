@@ -421,7 +421,7 @@ def build_files(options, names, entities):
     server_base = Path(names.server_module) / "src/main/java" / package_dir
     server_test_base = Path(names.server_module) / "src/test/java" / package_dir
 
-    add_common_files(files, common_base, names)
+    add_common_files(files, common_base, names, options.roles, entities)
     add_pojo_files(files, pojo_base, names, entities, options.features)
     add_server_files(files, server_base, server_test_base, names, entities, options.features)
     add_empty_resource_dirs(files, names)
@@ -440,7 +440,9 @@ def put(files, path, content):
     files[str(path)] = content
 
 
-def add_common_files(files, base, names):
+def add_common_files(files, base, names, roles=None, entities=None):
+    roles = normalize_roles(roles or [])
+    entities = entities or []
     package = names.base_package
     put(files, base / "constant/MessageConstant.java", java(package, "constant", """
 public final class MessageConstant {
@@ -471,6 +473,9 @@ public final class JwtClaimsConstant {
     }
 }
 """))
+    if roles:
+        put(files, base / "constant/RoleConstant.java", render_role_constant(package, roles))
+    put(files, base / "constant/PermissionConstant.java", render_permission_constant(package, entities))
     put(files, base / "context/BaseContext.java", java(package, "context", """
 public final class BaseContext {
     private static final ThreadLocal<Long> CURRENT_ID = new ThreadLocal<>();
@@ -491,6 +496,8 @@ public final class BaseContext {
     }
 }
 """))
+    if roles:
+        put(files, base / "context/AuthContext.java", render_auth_context(package))
     put(files, base / "enumeration/OperationType.java", java(package, "enumeration", """
 public enum OperationType {
     CREATE,
@@ -948,6 +955,97 @@ logs/
 """
 
 
+def normalize_roles(roles):
+    normalized = []
+    for role in roles:
+        value = slugify(str(role)).replace("-", "_")
+        if value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
+def constant_name(value):
+    words = re.findall(r"[A-Za-z0-9]+", value)
+    return "_".join(word.upper() for word in words)
+
+
+def render_role_constant(package, roles):
+    lines = [
+        '    public static final String %s = "%s";' % (constant_name(role), role)
+        for role in roles
+    ]
+    return java(package, "constant", """
+public final class RoleConstant {
+__ROLE_LINES__
+
+    private RoleConstant() {
+    }
+}
+""".replace("__ROLE_LINES__", "\n".join(lines)))
+
+
+def render_permission_constant(package, entities):
+    lines = []
+    actions = ["CREATE", "UPDATE", "DELETE", "DETAIL", "PAGE"]
+    for entity in entities:
+        resource = to_camel_case(entity.name)
+        for action in actions:
+            lines.append('    public static final String %s_%s = "%s:%s";' % (
+                constant_name(resource),
+                action,
+                resource,
+                action.lower(),
+            ))
+    return java(package, "constant", """
+public final class PermissionConstant {
+__PERMISSION_LINES__
+
+    private PermissionConstant() {
+    }
+}
+""".replace("__PERMISSION_LINES__", "\n".join(lines)))
+
+
+def render_auth_context(package):
+    return java(package, "context", """
+public final class AuthContext {
+    private static final ThreadLocal<Long> CURRENT_USER_ID = new ThreadLocal<>();
+    private static final ThreadLocal<String> CURRENT_ROLE = new ThreadLocal<>();
+
+    private AuthContext() {
+    }
+
+    public static void setCurrentUserId(Long userId) {
+        CURRENT_USER_ID.set(userId);
+    }
+
+    public static Long getCurrentUserId() {
+        return CURRENT_USER_ID.get();
+    }
+
+    public static void setCurrentRole(String role) {
+        CURRENT_ROLE.set(role);
+    }
+
+    public static String getCurrentRole() {
+        return CURRENT_ROLE.get();
+    }
+
+    public static void clear() {
+        CURRENT_USER_ID.remove();
+        CURRENT_ROLE.remove();
+    }
+}
+""")
+
+
+def render_role_list(roles):
+    normalized = normalize_roles(roles or [])
+    if not normalized:
+        return "- No roles configured yet; add `roles` in `project.yaml` when needed."
+    return "\n".join("- `%s`" % role for role in normalized)
+
+
 def render_project_readme(options, names, entities):
     return render_template_file("project/README.md.tpl", {
         "PROJECT_NAME": names.project_name,
@@ -956,6 +1054,7 @@ def render_project_readme(options, names, entities):
         "POJO_MODULE": names.pojo_module,
         "SERVER_MODULE": names.server_module,
         "ENTITY_LIST": "\n".join("- `%s`" % entity.name for entity in entities),
+        "ROLE_LIST": render_role_list(options.roles),
         "JAVA_VERSION": options.java_version,
         "MAVEN_VERSION": options.maven_version,
         "SPRING_BOOT_VERSION": options.spring_boot_version,
@@ -976,6 +1075,10 @@ __DESCRIPTION__
 ## Generated Business Objects
 
 __ENTITY_LIST__
+
+## Generated Roles
+
+__ROLE_LIST__
 
 ## Environment
 

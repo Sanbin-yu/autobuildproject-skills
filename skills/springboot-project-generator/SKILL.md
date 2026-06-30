@@ -11,31 +11,24 @@ description: Use when creating or scaffolding Maven multi-module Spring Boot bac
 
 ## 工作流程
 
-1. 生成前先做简短项目问诊：
-   - 项目名称
-   - 基础包名，或者默认使用 `com.example.<project>`
-   - 项目方向和目标用户
-   - 1-3 个核心业务对象，以及每个对象最重要的字段
-   - 角色权限或安全需求，例如 admin、user、operator
-   - 数据库、缓存、消息队列需求
-   - 是否启用 Security、JWT、Redis、RabbitMQ、MySQL、MyBatis-Plus
-   - 输出目录
-2. 使用 `java -version` 和 `mvn -version` 检测本地版本；版本会影响生成结果时，让用户确认或覆盖。
-3. 在仓库根目录运行生成器：
+1. 生成前先做简短项目问诊。不要直接跳过问诊运行 CLI，除非用户已经给出完整 `project.yaml`。
+2. 问诊后先整理 project.yaml 草稿，展示给用户确认；确认后再运行生成器。
+3. 使用 `java -version` 和 `mvn -version` 检测本地版本；版本会影响生成结果时，让用户确认或覆盖。
+4. 在仓库根目录运行生成器。只有在必要信息已经明确时才使用 `--no-interactive`。使用 `--dry-run` 可以只展示生成计划，不写入文件。
 
-```bash
-python3 -m springboot_project_generator generate \
-  --project-name <name> \
-  --base-package <package> \
-  --description "<project direction>" \
-  --entity <EntityOne> \
-  --entity <EntityTwo> \
-  --output-dir <directory>
-```
+## 项目问诊
 
-只有在必要信息已经明确时才使用 `--no-interactive`。使用 `--dry-run` 可以只展示生成计划，不写入文件。
+固定覆盖这 7 项，尽量一次问清，但保持问题简洁：
 
-复杂项目优先生成 `project.yaml`，再运行：
+1. 项目类型：例如后台管理、商城、预约系统、会员系统、内容平台。
+2. 核心业务对象：1-3 个最重要的对象，例如 Member、Order、Product。
+3. 对象字段：每个对象 2-6 个关键字段，标出必填、唯一、金额、时间等含义。
+4. 用户角色：例如 admin、user、operator、merchant；没有就留空。
+5. 数据持久化：是否需要 MySQL/MyBatis-Plus，是否只要可启动内存骨架。
+6. 外部服务：是否需要 Redis、RabbitMQ，是否只是预留配置。
+7. 安全要求：是否启用 Security/JWT，默认健康检查和基础 CRUD 可启动。
+
+用户确认 `project.yaml` 草稿后再运行：
 
 ```bash
 python3 -m springboot_project_generator generate --config project.yaml --no-interactive

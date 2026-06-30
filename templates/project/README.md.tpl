@@ -12,6 +12,10 @@ __DESCRIPTION__
 
 __ENTITY_LIST__
 
+## Generated Roles
+
+__ROLE_LIST__
+
 ## Environment
 
 - Java: __JAVA_VERSION__
@@ -34,4 +38,3 @@ The generated project starts without requiring live MySQL, Redis, or RabbitMQ se
 - `app.jwt.secret`: replace before production use.
 - `app.redis.enabled`: default `false`.
 - `app.rabbitmq.enabled`: default `false`.
-

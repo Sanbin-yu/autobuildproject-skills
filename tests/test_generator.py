@@ -335,3 +335,46 @@ entities:
     assert not (
         project_dir / "lean-server/src/main/java/com/acme/lean/config/SecurityConfig.java"
     ).exists()
+
+
+def test_roles_generate_permission_skeleton_and_readme_notes(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: club
+basePackage: com.acme.club
+description: club backend with member management
+outputDir: .
+roles:
+  - admin
+  - member
+entities:
+  - name: Member
+    fields:
+      - name: phone
+        type: String
+        required: true
+""".strip()
+    )
+
+    project_dir = generate_project(load_project_config(config))
+
+    role_constant = (
+        project_dir / "club-common/src/main/java/com/acme/club/constant/RoleConstant.java"
+    ).read_text()
+    permission_constant = (
+        project_dir
+        / "club-common/src/main/java/com/acme/club/constant/PermissionConstant.java"
+    ).read_text()
+    auth_context = (
+        project_dir / "club-common/src/main/java/com/acme/club/context/AuthContext.java"
+    ).read_text()
+    readme = (project_dir / "README.md").read_text()
+
+    assert 'public static final String ADMIN = "admin";' in role_constant
+    assert 'public static final String MEMBER = "member";' in role_constant
+    assert 'public static final String MEMBER_CREATE = "member:create";' in permission_constant
+    assert 'public static final String MEMBER_PAGE = "member:page";' in permission_constant
+    assert "private static final ThreadLocal<String> CURRENT_ROLE" in auth_context
+    assert "- `admin`" in readme
+    assert "- `member`" in readme
