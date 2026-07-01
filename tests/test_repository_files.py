@@ -89,12 +89,33 @@ def test_github_actions_workflow_runs_python_and_generated_project_checks():
     assert "windows-latest" in content
     assert "python -m pytest" in content
     assert "PYTHONUTF8" in content
+    assert "./scripts/ci-smoke.sh all" in content
+    assert "CI_SMOKE_SKIP_MAVEN" not in content
+
+
+def test_ci_smoke_script_documents_reproducible_generation_checks():
+    script = ROOT / "scripts/ci-smoke.sh"
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert script.exists()
+    assert script.stat().st_mode & stat.S_IXUSR
+
+    content = script.read_text(encoding="utf-8")
+
+    assert "Usage: scripts/ci-smoke.sh [default|lean|all]" in content
+    assert "CI_SMOKE_OUTPUT_DIR" in content
+    assert "CI_SMOKE_SKIP_MAVEN" in content
+    assert "PYTHON_BIN" in content
+    assert "command -v python3" in content
+    assert "MAVEN_BIN" in content
+    assert "command -v mvn" in content
     assert "springboot_project_generator generate" in content
     assert "mvn package" in content
     assert "ci-default" in content
     assert "ci-lean" in content
     assert "HealthController.java" in content
     assert "schema.sql" in content
+    assert "scripts/ci-smoke.sh all" in readme
 
 
 def test_structured_example_config_is_documented():

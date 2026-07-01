@@ -39,82 +39,8 @@ jobs:
           PYTHONUTF8: "1"
         run: python -m pytest
 
-      - name: 生成默认全功能项目 ci-default
+      - name: 生成并打包示例项目
         shell: bash
-        run: |
-          python -m springboot_project_generator generate \
-            --project-name ci-default \
-            --base-package com.example.cidefault \
-            --description "default backend with product management" \
-            --entity Product \
-            --output-dir "$RUNNER_TEMP" \
-            --java-version 21 \
-            --maven-version 3.9.9 \
-            --no-interactive
-
-      - name: 检查默认全功能项目 smoke 文件
-        shell: bash
-        run: |
-          test -f "$RUNNER_TEMP/ci-default/pom.xml"
-          test -f "$RUNNER_TEMP/ci-default/ci-default-server/pom.xml"
-          test -f "$RUNNER_TEMP/ci-default/ci-default-server/src/main/java/com/example/cidefault/controller/HealthController.java"
-          test -f "$RUNNER_TEMP/ci-default/ci-default-server/src/main/resources/db/schema.sql"
-          test -f "$RUNNER_TEMP/ci-default/README.md"
-
-      - name: 打包默认全功能项目 ci-default
-        shell: bash
-        working-directory: ${{ runner.temp }}/ci-default
-        run: mvn package
-
-      - name: 写入 lean 项目配置
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/ci-configs"
-          cat > "$RUNNER_TEMP/ci-configs/ci-lean.yaml" <<'YAML'
-          projectName: ci-lean
-          basePackage: com.example.cilean
-          description: lean backend with task management
-          outputDir: __RUNNER_TEMP__
-          features:
-            security: false
-            jwt: false
-            redis: false
-            rabbitmq: false
-            mysql: false
-            mybatisPlus: false
-          entities:
-            - name: Task
-              fields:
-                - name: title
-                  type: String
-                  required: true
-          YAML
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          path = Path(os.environ["RUNNER_TEMP"]) / "ci-configs" / "ci-lean.yaml"
-          content = path.read_text(encoding="utf-8")
-          path.write_text(
-              content.replace("__RUNNER_TEMP__", os.environ["RUNNER_TEMP"]),
-              encoding="utf-8",
-          )
-          PY
-
-      - name: 生成 lean 项目 ci-lean
-        shell: bash
-        run: python -m springboot_project_generator generate --config "$RUNNER_TEMP/ci-configs/ci-lean.yaml" --no-interactive
-
-      - name: 检查 lean 项目 smoke 文件
-        shell: bash
-        run: |
-          test -f "$RUNNER_TEMP/ci-lean/pom.xml"
-          test -f "$RUNNER_TEMP/ci-lean/ci-lean-server/pom.xml"
-          test -f "$RUNNER_TEMP/ci-lean/ci-lean-server/src/main/java/com/example/cilean/controller/HealthController.java"
-          test -f "$RUNNER_TEMP/ci-lean/ci-lean-server/src/main/resources/db/schema.sql"
-          test -f "$RUNNER_TEMP/ci-lean/README.md"
-
-      - name: 打包 lean 项目 ci-lean
-        shell: bash
-        working-directory: ${{ runner.temp }}/ci-lean
-        run: mvn package
+        env:
+          CI_SMOKE_OUTPUT_DIR: ${{ runner.temp }}
+        run: ./scripts/ci-smoke.sh all

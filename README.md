@@ -292,7 +292,21 @@ python -m pytest
 PYTHONUTF8=1 python -m pytest
 ```
 
-CI 使用 Ubuntu 和 Windows matrix，生成默认全功能项目与 lean 项目，并执行 smoke 文件检查和 `mvn package`。
+本地复现 CI 生成物检查：
+
+```bash
+scripts/ci-smoke.sh all
+scripts/ci-smoke.sh default
+scripts/ci-smoke.sh lean
+```
+
+如只想检查生成结构、不跑 Maven：
+
+```bash
+CI_SMOKE_SKIP_MAVEN=1 scripts/ci-smoke.sh all
+```
+
+CI 使用 Ubuntu 和 Windows matrix，调用 `scripts/ci-smoke.sh all` 生成默认全功能项目与 lean 项目，并执行 smoke 文件检查和 `mvn package`。
 
 ## License
 
