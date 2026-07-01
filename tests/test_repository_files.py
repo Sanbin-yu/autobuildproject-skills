@@ -87,6 +87,7 @@ def test_github_actions_workflow_runs_python_and_generated_project_checks():
     assert "matrix:" in content
     assert "ubuntu-latest" in content
     assert "windows-latest" in content
+    assert "cache: maven" not in content
     assert "python -m pytest" in content
     assert "PYTHONUTF8" in content
     assert "./scripts/ci-smoke.sh all" in content
