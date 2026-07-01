@@ -76,16 +76,16 @@ def test_rendered_files_contain_expected_dependencies_and_names(tmp_path):
 
     project_dir = generate_project(options)
 
-    root_pom = (project_dir / "pom.xml").read_text()
+    root_pom = (project_dir / "pom.xml").read_text(encoding="utf-8")
     app = (
         project_dir
         / "order-hub-server/src/main/java/com/example/orders/OrderHubApplication.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     controller = (
         project_dir
         / "order-hub-server/src/main/java/com/example/orders/controller/OrderController.java"
-    ).read_text()
-    readme = (project_dir / "README.md").read_text()
+    ).read_text(encoding="utf-8")
+    readme = (project_dir / "README.md").read_text(encoding="utf-8")
 
     assert "<artifactId>spring-boot-starter-web</artifactId>" in root_pom
     assert "<artifactId>mybatis-plus-spring-boot3-starter</artifactId>" in root_pom
@@ -127,7 +127,8 @@ springBootVersion: 3.3.5
 entities:
   - Book
   - Reader
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     options = load_project_config(config)
@@ -151,7 +152,8 @@ outputDir: .
 entities:
   - Book
   - BorrowRecord
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     options = load_project_config(config)
@@ -198,7 +200,8 @@ entities:
         type: LocalDateTime
       - name: active
         type: Boolean
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     options = load_project_config(config)
@@ -236,35 +239,36 @@ entities:
         type: LocalDateTime
       - name: active
         type: Boolean
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     project_dir = generate_project(load_project_config(config))
 
     entity = (
         project_dir / "club-pojo/src/main/java/com/acme/club/entity/Member.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     create_dto = (
         project_dir / "club-pojo/src/main/java/com/acme/club/dto/MemberCreateDTO.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     common_dto = (
         project_dir / "club-pojo/src/main/java/com/acme/club/dto/MemberDTO.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     list_vo = (
         project_dir / "club-pojo/src/main/java/com/acme/club/vo/MemberListVO.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     detail_vo = (
         project_dir / "club-pojo/src/main/java/com/acme/club/vo/MemberDetailVO.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     controller = (
         project_dir
         / "club-server/src/main/java/com/acme/club/controller/MemberController.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     service_impl = (
         project_dir
         / "club-server/src/main/java/com/acme/club/service/impl/MemberServiceImpl.java"
-    ).read_text()
-    schema = (project_dir / "club-server/src/main/resources/db/schema.sql").read_text()
+    ).read_text(encoding="utf-8")
+    schema = (project_dir / "club-server/src/main/resources/db/schema.sql").read_text(encoding="utf-8")
 
     assert "import java.math.BigDecimal;" in entity
     assert "private String phone;" in entity
@@ -309,18 +313,19 @@ entities:
       - name: title
         type: String
         required: true
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     project_dir = generate_project(load_project_config(config))
 
-    pom = (project_dir / "pom.xml").read_text()
+    pom = (project_dir / "pom.xml").read_text(encoding="utf-8")
     entity = (
         project_dir / "lean-pojo/src/main/java/com/acme/lean/entity/Task.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     mapper = (
         project_dir / "lean-server/src/main/java/com/acme/lean/mapper/TaskMapper.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
 
     assert "spring-boot-starter-security" not in pom
     assert "mybatis-plus-spring-boot3-starter" not in pom
@@ -354,22 +359,23 @@ entities:
       - name: phone
         type: String
         required: true
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     project_dir = generate_project(load_project_config(config))
 
     role_constant = (
         project_dir / "club-common/src/main/java/com/acme/club/constant/RoleConstant.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     permission_constant = (
         project_dir
         / "club-common/src/main/java/com/acme/club/constant/PermissionConstant.java"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     auth_context = (
         project_dir / "club-common/src/main/java/com/acme/club/context/AuthContext.java"
-    ).read_text()
-    readme = (project_dir / "README.md").read_text()
+    ).read_text(encoding="utf-8")
+    readme = (project_dir / "README.md").read_text(encoding="utf-8")
 
     assert 'public static final String ADMIN = "admin";' in role_constant
     assert 'public static final String MEMBER = "member";' in role_constant

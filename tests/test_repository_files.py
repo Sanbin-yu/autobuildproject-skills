@@ -1,3 +1,4 @@
+import ast
 import os
 import stat
 import subprocess
@@ -10,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_skill_metadata_exists_and_mentions_diagnosis():
     skill = ROOT / "skills/springboot-project-generator/SKILL.md"
 
-    content = skill.read_text()
+    content = skill.read_text(encoding="utf-8")
 
     assert "name: springboot-project-generator" in content
     assert "项目问诊" in content
@@ -18,7 +19,7 @@ def test_skill_metadata_exists_and_mentions_diagnosis():
 
 
 def test_repository_readme_documents_cli_and_skill_usage():
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "python3 -m springboot_project_generator generate" in readme
     assert "$springboot-project-generator" in readme
@@ -26,6 +27,25 @@ def test_repository_readme_documents_cli_and_skill_usage():
     assert "project.yaml" in readme
     assert "fields:" in readme
     assert "features:" in readme
+
+
+def test_repository_readme_has_open_source_trust_signals():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+
+    assert "[![CI]" in readme
+    assert "MIT License" in license_text
+    assert "## Quick Start" in readme
+    assert "pipx run" in readme
+    assert "uvx" in readme
+    assert "## Supported Scope" in readme
+    assert "## Not Supported Yet" in readme
+    assert "## Generated Project Shape" in readme
+    assert "## Example APIs" in readme
+    assert "## Windows / PowerShell" in readme
+    assert "Spring Boot 3.x" in readme
+    assert "Java 21" in readme
+    assert "Maven multi-module" in readme
 
 
 def test_repository_contains_external_templates():
@@ -37,24 +57,27 @@ def test_repository_contains_external_templates():
 
     for template_file in template_files:
         assert template_file.exists(), template_file
-        assert "__PROJECT_NAME__" in template_file.read_text()
+        assert "__PROJECT_NAME__" in template_file.read_text(encoding="utf-8")
 
 
 def test_github_actions_workflow_runs_python_and_generated_project_checks():
     workflow = ROOT / ".github/workflows/ci.yml"
 
-    content = workflow.read_text()
+    content = workflow.read_text(encoding="utf-8")
 
     assert "python3 -m pytest" in content
     assert "springboot_project_generator generate" in content
     assert "mvn package" in content
+    assert "ci-minimal" in content
+    assert "ci-structured" in content
+    assert "ci-security" in content
 
 
 def test_structured_example_config_is_documented():
     example = ROOT / "examples/club-project.yaml"
-    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text()
+    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text(encoding="utf-8")
 
-    content = example.read_text()
+    content = example.read_text(encoding="utf-8")
 
     assert "fields:" in content
     assert "features:" in content
@@ -64,7 +87,7 @@ def test_structured_example_config_is_documented():
 
 
 def test_skill_documents_diagnosis_questions_and_yaml_draft_rule():
-    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text()
+    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text(encoding="utf-8")
 
     expected_questions = [
         "项目类型",
@@ -104,3 +127,30 @@ def test_install_skill_script_links_skill_into_codex_home(tmp_path):
     assert link.is_symlink()
     assert link.resolve() == ROOT / "skills/springboot-project-generator"
     assert "springboot-project-generator" in result.stdout
+
+
+def test_windows_install_script_is_documented():
+    script = ROOT / "scripts/install-skill.ps1"
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    content = script.read_text(encoding="utf-8")
+
+    assert script.exists()
+    assert "New-Item" in content
+    assert "CODEX_HOME" in content
+    assert ".\\scripts\\install-skill.ps1" in readme
+
+
+def test_tests_use_explicit_utf8_for_text_file_io():
+    for test_file in (ROOT / "tests").glob("test_*.py"):
+        content = test_file.read_text(encoding="utf-8")
+        tree = ast.parse(content)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr not in {"read_text", "write_text"}:
+                continue
+            keyword_names = {keyword.arg for keyword in node.keywords}
+            assert "encoding" in keyword_names, test_file

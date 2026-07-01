@@ -77,7 +77,8 @@ outputDir: .
 entities:
   - Patient
   - Appointment
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     result = subprocess.run(
@@ -116,7 +117,8 @@ mybatisPlusVersion: 3.5.5
 jwtVersion: 0.12.5
 entities:
   - VersionedItem
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     result = subprocess.run(
@@ -135,7 +137,7 @@ entities:
     )
 
     assert result.returncode == 0, result.stderr
-    pom = (tmp_path / "versioned/pom.xml").read_text()
+    pom = (tmp_path / "versioned/pom.xml").read_text(encoding="utf-8")
     assert "<version>3.2.6</version>" in pom
     assert "<mybatis-plus.version>3.5.5</mybatis-plus.version>" in pom
     assert "<jjwt.version>0.12.5</jjwt.version>" in pom
@@ -163,7 +165,8 @@ entities:
         unique: true
       - name: balance
         type: BigDecimal
-""".strip()
+""".strip(),
+        encoding="utf-8",
     )
 
     result = subprocess.run(
@@ -184,8 +187,8 @@ entities:
     assert result.returncode == 0, result.stderr
     entity = (
         tmp_path / "club/club-pojo/src/main/java/com/acme/club/entity/Member.java"
-    ).read_text()
-    pom = (tmp_path / "club/pom.xml").read_text()
+    ).read_text(encoding="utf-8")
+    pom = (tmp_path / "club/pom.xml").read_text(encoding="utf-8")
     assert "private BigDecimal balance;" in entity
     assert "spring-boot-starter-security" not in pom
     assert "spring-boot-starter-data-redis" not in pom

@@ -27,19 +27,85 @@ jobs:
       - name: 运行 Python 测试
         run: python3 -m pytest
 
-      - name: 生成示例项目
+      - name: 生成最小项目 ci-minimal
         run: |
           python3 -m springboot_project_generator generate \
-            --project-name ci-demo \
-            --base-package com.example.cidemo \
-            --description "ci demo backend with product management" \
+            --project-name ci-minimal \
+            --base-package com.example.ciminimal \
+            --description "minimal backend with product management" \
             --entity Product \
             --output-dir /tmp \
             --java-version 21 \
             --maven-version 3.9.9 \
             --no-interactive
 
-      - name: 验证生成项目
-        working-directory: /tmp/ci-demo
+      - name: 验证最小项目 ci-minimal
+        working-directory: /tmp/ci-minimal
         run: mvn package
 
+      - name: 生成结构化字段项目 ci-structured
+        run: |
+          mkdir -p /tmp/ci-configs
+          cat > /tmp/ci-configs/ci-structured.yaml <<'YAML'
+          projectName: ci-structured
+          basePackage: com.example.cistructured
+          description: structured backend with member management
+          outputDir: /tmp
+          features:
+            security: false
+            jwt: false
+            redis: false
+            rabbitmq: false
+            mysql: false
+            mybatisPlus: false
+          entities:
+            - name: Member
+              fields:
+                - name: phone
+                  type: String
+                  required: true
+                  unique: true
+                - name: balance
+                  type: BigDecimal
+                - name: active
+                  type: Boolean
+          YAML
+          python3 -m springboot_project_generator generate --config /tmp/ci-configs/ci-structured.yaml --no-interactive
+
+      - name: 验证结构化字段项目 ci-structured
+        working-directory: /tmp/ci-structured
+        run: mvn package
+
+      - name: 生成角色安全项目 ci-security
+        run: |
+          mkdir -p /tmp/ci-configs
+          cat > /tmp/ci-configs/ci-security.yaml <<'YAML'
+          projectName: ci-security
+          basePackage: com.example.cisecurity
+          description: security backend with account management
+          outputDir: /tmp
+          roles:
+            - admin
+            - user
+          features:
+            security: true
+            jwt: true
+            redis: false
+            rabbitmq: false
+            mysql: true
+            mybatisPlus: true
+          entities:
+            - name: Account
+              fields:
+                - name: username
+                  type: String
+                  required: true
+                  unique: true
+                - name: displayName
+                  type: String
+          YAML
+          python3 -m springboot_project_generator generate --config /tmp/ci-configs/ci-security.yaml --no-interactive
+
+      - name: 验证角色安全项目 ci-security
+        working-directory: /tmp/ci-security
+        run: mvn package
