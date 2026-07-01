@@ -1,6 +1,6 @@
 interface:
-  display_name: "Spring Boot 项目生成器"
-  short_description: "生成多模块 Spring Boot 后端项目"
-  default_prompt: "使用 $springboot-project-generator 创建一个 Maven 多模块 Spring Boot 后端项目。"
+  display_name: "Spring Boot Backend Skill"
+  short_description: "问诊生成可信赖的 Maven 多模块 Spring Boot 后端启动项目"
+  default_prompt: "使用 $springboot-project-generator 先做项目问诊，整理 project.yaml，确认后生成一个可信赖的 Maven 多模块 Spring Boot 后端启动项目，并运行 Maven 验证。"
 policy:
   allow_implicit_invocation: true

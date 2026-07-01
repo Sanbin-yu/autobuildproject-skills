@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "springboot-project-generator"
-version = "0.1.0"
+version = "0.2.0"
 description = "Generate Maven multi-module Spring Boot backend projects from CLI arguments or project.yaml."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [
     { name = "Sanbin Yu" }

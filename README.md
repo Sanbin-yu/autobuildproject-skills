@@ -10,6 +10,8 @@
 - Codex Skill：负责项目问诊，把业务对象、角色、字段和技术栈整理成结构化配置。
 - Python CLI：负责稳定生成 Spring Boot 项目，是可测试的生成引擎。
 
+当前不是生产级后端生成器。v0.2 的目标是降低安装、运行和贡献门槛：让别人敢安装、敢执行示例、敢看 CI 结果；真实数据库 CRUD、完整 JWT 登录、RBAC 和增量生成会放到后续版本。
+
 ## Quick Start
 
 克隆仓库后，直接生成一个示例项目：
@@ -22,6 +24,13 @@ python3 -m springboot_project_generator generate \
   --entity Product \
   --output-dir /tmp \
   --no-interactive
+```
+
+也可以先安装为本地可执行命令：
+
+```bash
+python -m pip install -e .
+springboot-project-generator generate --help
 ```
 
 验证生成物：
@@ -83,6 +92,7 @@ Windows 用户建议使用 PowerShell 安装脚本：
 - Spring Boot 3.x
 - Java 21
 - Maven multi-module
+- Python 3.11+
 - Parent project plus `<project>-common`、`<project>-pojo`、`<project>-server`
 - 内存 CRUD，可健康启动，不要求首次运行就连接 MySQL、Redis 或 RabbitMQ
 - MyBatis-Plus / MySQL 骨架
@@ -93,6 +103,7 @@ Windows 用户建议使用 PowerShell 安装脚本：
 
 ## Not Supported Yet
 
+- 当前不是生产级后端生成器；生成物适合作为后端项目起点和学习/原型骨架
 - 增量更新已有项目并保护用户代码
 - 完整生产级 JWT 登录链路
 - 真实数据库 CRUD 实现替代内存 Map
@@ -148,6 +159,52 @@ DELETE /api/products/{id}
 ```
 
 默认 `app.security.enabled=false`，健康检查和 CRUD 骨架可以直接启动验证。需要更严格认证时，在配置中启用 Security/JWT 后继续完善登录链路。
+
+## Example Generation
+
+默认全功能项目会包含 Web、Validation、Security/JWT、MyBatis-Plus/MySQL、Redis、RabbitMQ 和测试依赖骨架：
+
+```bash
+python -m springboot_project_generator generate \
+  --project-name ci-default \
+  --base-package com.example.cidefault \
+  --description "default backend with product management" \
+  --entity Product \
+  --output-dir /tmp \
+  --no-interactive
+```
+
+lean 项目可以通过 `project.yaml` 关闭 Security、JWT、Redis、RabbitMQ、MySQL 和 MyBatis-Plus，只保留可启动的 Web/Validation/内存 CRUD 骨架：
+
+```yaml
+projectName: ci-lean
+basePackage: com.example.cilean
+description: lean backend with task management
+outputDir: /tmp
+features:
+  security: false
+  jwt: false
+  redis: false
+  rabbitmq: false
+  mysql: false
+  mybatisPlus: false
+entities:
+  - name: Task
+    fields:
+      - name: title
+        type: String
+        required: true
+```
+
+结构化业务示例放在 `examples/club-project.yaml`：
+
+```bash
+python -m springboot_project_generator generate --config examples/club-project.yaml --no-interactive
+cd /tmp/club
+mvn package
+```
+
+仓库只提交示例配置和 README 片段，不提交完整生成物；CI 会在临时目录里重新生成并验证。
 
 ## project.yaml
 
@@ -231,10 +288,11 @@ python3 -m springboot_project_generator generate --config project.yaml --no-inte
 运行 Python 测试：
 
 ```bash
-python3 -m pytest
+python -m pytest
+PYTHONUTF8=1 python -m pytest
 ```
 
-CI 会生成多种项目并执行 `mvn package`，覆盖最小项目、结构化字段项目、Security/JWT 角色项目。
+CI 使用 Ubuntu 和 Windows matrix，生成默认全功能项目与 lean 项目，并执行 smoke 文件检查和 `mvn package`。
 
 ## License
 

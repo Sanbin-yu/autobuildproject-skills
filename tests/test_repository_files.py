@@ -2,6 +2,7 @@ import ast
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -46,6 +47,24 @@ def test_repository_readme_has_open_source_trust_signals():
     assert "Spring Boot 3.x" in readme
     assert "Java 21" in readme
     assert "Maven multi-module" in readme
+    assert "当前不是生产级后端生成器" in readme
+    assert "默认全功能项目" in readme
+    assert "lean 项目" in readme
+    assert "examples/club-project.yaml" in readme
+
+
+def test_python_package_metadata_is_ready_for_v02_installation():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '[build-system]' in pyproject
+    assert 'build-backend = "setuptools.build_meta"' in pyproject
+    assert 'name = "springboot-project-generator"' in pyproject
+    assert 'version = "0.2.0"' in pyproject
+    assert 'requires-python = ">=3.11"' in pyproject
+    assert (
+        'springboot-project-generator = "springboot_project_generator.cli:main"'
+        in pyproject
+    )
 
 
 def test_repository_contains_external_templates():
@@ -65,16 +84,22 @@ def test_github_actions_workflow_runs_python_and_generated_project_checks():
 
     content = workflow.read_text(encoding="utf-8")
 
-    assert "python3 -m pytest" in content
+    assert "matrix:" in content
+    assert "ubuntu-latest" in content
+    assert "windows-latest" in content
+    assert "python -m pytest" in content
+    assert "PYTHONUTF8" in content
     assert "springboot_project_generator generate" in content
     assert "mvn package" in content
-    assert "ci-minimal" in content
-    assert "ci-structured" in content
-    assert "ci-security" in content
+    assert "ci-default" in content
+    assert "ci-lean" in content
+    assert "HealthController.java" in content
+    assert "schema.sql" in content
 
 
 def test_structured_example_config_is_documented():
     example = ROOT / "examples/club-project.yaml"
+    examples_readme = (ROOT / "examples/README.md").read_text(encoding="utf-8")
     skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text(encoding="utf-8")
 
     content = example.read_text(encoding="utf-8")
@@ -84,6 +109,9 @@ def test_structured_example_config_is_documented():
     assert "roles:" in content
     assert "字段级生成" in skill
     assert "技术栈开关" in skill
+    assert "python -m springboot_project_generator generate --config examples/club-project.yaml --no-interactive" in examples_readme
+    assert "mvn package" in examples_readme
+    assert "不会提交完整生成物" in examples_readme
 
 
 def test_skill_documents_diagnosis_questions_and_yaml_draft_rule():
@@ -137,8 +165,88 @@ def test_windows_install_script_is_documented():
 
     assert script.exists()
     assert "New-Item" in content
+    assert "Junction" in content
+    assert "Copy-Item" in content
     assert "CODEX_HOME" in content
     assert ".\\scripts\\install-skill.ps1" in readme
+
+
+def test_console_script_entrypoint_works_without_installation():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "springboot_project_generator",
+            "generate",
+            "--help",
+        ],
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--project-name" in result.stdout
+    assert "--config" in result.stdout
+
+
+def test_generated_project_smoke_files_exist(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "springboot_project_generator",
+            "generate",
+            "--project-name",
+            "smoke",
+            "--base-package",
+            "com.example.smoke",
+            "--description",
+            "smoke backend with product management",
+            "--entity",
+            "Product",
+            "--output-dir",
+            str(tmp_path),
+            "--no-interactive",
+        ],
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+
+    project_dir = tmp_path / "smoke"
+    assert result.returncode == 0, result.stderr
+    assert (project_dir / "pom.xml").exists()
+    assert (project_dir / "smoke-server/pom.xml").exists()
+    assert (
+        project_dir
+        / "smoke-server/src/main/java/com/example/smoke/controller/HealthController.java"
+    ).exists()
+    assert (project_dir / "smoke-server/src/main/resources/db/schema.sql").exists()
+    assert (project_dir / "README.md").exists()
+
+
+def test_skill_metadata_is_short_and_agent_prompt_matches_positioning():
+    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text(encoding="utf-8")
+    agent = (
+        ROOT / "skills/springboot-project-generator/agents/openai.yaml"
+    ).read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    frontmatter = skill.split("---", 2)[1]
+    description_line = next(
+        line for line in frontmatter.splitlines() if line.startswith("description:")
+    )
+    description = description_line.split(":", 1)[1].strip().strip('"')
+
+    assert len(description) < 320
+    assert "Use when" in description
+    assert "workflow" not in description.lower()
+    assert "可信赖" in agent
+    assert "project.yaml" in agent
+    assert "Spring Boot Backend Skill" in readme
 
 
 def test_tests_use_explicit_utf8_for_text_file_io():

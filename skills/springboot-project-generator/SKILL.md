@@ -1,20 +1,21 @@
 ---
 name: springboot-project-generator
-description: Use when creating or scaffolding Maven multi-module Spring Boot backend projects, common/pojo/server modules, backend dependencies, CRUD scaffolding, Java packages, pom.xml files, schema.sql, runnable starter backend, Spring Boot 项目脚手架, 多模块后端项目.
+description: Use when creating Maven multi-module Spring Boot backend starters from business descriptions, project.yaml files, Java packages, pom.xml files, CRUD scaffolds, schema.sql drafts, or Spring Boot 项目脚手架 requests.
 ---
 
-# Spring Boot 项目生成器
+# Spring Boot Backend Skill
 
 ## 概览
 
-使用仓库内置的 Python CLI 作为稳定生成引擎。先理解用户想做什么项目，再确认环境和生成选项，最后运行 CLI。
+这是一个问诊驱动的 Spring Boot 后端项目启动器。Skill 负责把需求整理成 `project.yaml`，仓库内 Python CLI 负责稳定生成、验证和复现。
 
 ## 工作流程
 
-1. 生成前先做简短项目问诊。不要直接跳过问诊运行 CLI，除非用户已经给出完整 `project.yaml`。
-2. 问诊后先整理 project.yaml 草稿，展示给用户确认；确认后再运行生成器。
-3. 使用 `java -version` 和 `mvn -version` 检测本地版本；版本会影响生成结果时，让用户确认或覆盖。
-4. 在仓库根目录运行生成器。只有在必要信息已经明确时才使用 `--no-interactive`。使用 `--dry-run` 可以只展示生成计划，不写入文件。
+1. 项目问诊：生成前先问清业务方向、对象、字段、角色、持久化、外部服务和安全要求。不要直接跳过问诊运行 CLI，除非用户已经给出完整 `project.yaml`。
+2. 配置确认：先整理 project.yaml 草稿，展示给用户确认；确认后再运行生成器。
+3. 环境确认：使用 `java -version` 和 `mvn -version` 检测本地版本；版本会影响生成结果时，让用户确认或覆盖。
+4. CLI 生成：在仓库根目录运行生成器。只有在必要信息已经明确时才使用 `--no-interactive`。使用 `--dry-run` 可以只展示生成计划，不写入文件。
+5. Maven 验证：生成后进入项目执行 `mvn test` 和 `mvn package`，并把失败原因区分为生成器问题、依赖下载问题或本地环境问题。
 
 ## 项目问诊
 
@@ -75,6 +76,7 @@ entities:
 - 技术栈开关：关闭 Security、JWT、Redis、RabbitMQ、MySQL、MyBatis-Plus 时，要同步裁剪相关依赖和生成代码。
 - 已存在目标目录：不要覆盖；让用户选择新的输出目录或项目名。
 - 模板：Maven、项目 README、application.yml 已外置在 `templates/`，修改模板优先改模板文件。
+- 边界：当前不是生产级后端生成器；真实数据库 CRUD、完整 JWT 登录、RBAC、Docker Compose、Flyway/Liquibase 和增量生成不在 v0.2 范围内。
 
 ## 验证
 

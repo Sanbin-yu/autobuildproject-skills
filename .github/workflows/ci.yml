@@ -7,7 +7,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / python-${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11"]
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -15,7 +22,7 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: 设置 Java
         uses: actions/setup-java@v4
@@ -24,33 +31,50 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: 运行 Python 测试
-        run: python3 -m pytest
+      - name: 安装测试依赖
+        run: python -m pip install -U pip pytest
 
-      - name: 生成最小项目 ci-minimal
+      - name: 运行 Python 测试
+        env:
+          PYTHONUTF8: "1"
+        run: python -m pytest
+
+      - name: 生成默认全功能项目 ci-default
+        shell: bash
         run: |
-          python3 -m springboot_project_generator generate \
-            --project-name ci-minimal \
-            --base-package com.example.ciminimal \
-            --description "minimal backend with product management" \
+          python -m springboot_project_generator generate \
+            --project-name ci-default \
+            --base-package com.example.cidefault \
+            --description "default backend with product management" \
             --entity Product \
-            --output-dir /tmp \
+            --output-dir "$RUNNER_TEMP" \
             --java-version 21 \
             --maven-version 3.9.9 \
             --no-interactive
 
-      - name: 验证最小项目 ci-minimal
-        working-directory: /tmp/ci-minimal
+      - name: 检查默认全功能项目 smoke 文件
+        shell: bash
+        run: |
+          test -f "$RUNNER_TEMP/ci-default/pom.xml"
+          test -f "$RUNNER_TEMP/ci-default/ci-default-server/pom.xml"
+          test -f "$RUNNER_TEMP/ci-default/ci-default-server/src/main/java/com/example/cidefault/controller/HealthController.java"
+          test -f "$RUNNER_TEMP/ci-default/ci-default-server/src/main/resources/db/schema.sql"
+          test -f "$RUNNER_TEMP/ci-default/README.md"
+
+      - name: 打包默认全功能项目 ci-default
+        shell: bash
+        working-directory: ${{ runner.temp }}/ci-default
         run: mvn package
 
-      - name: 生成结构化字段项目 ci-structured
+      - name: 写入 lean 项目配置
+        shell: bash
         run: |
-          mkdir -p /tmp/ci-configs
-          cat > /tmp/ci-configs/ci-structured.yaml <<'YAML'
-          projectName: ci-structured
-          basePackage: com.example.cistructured
-          description: structured backend with member management
-          outputDir: /tmp
+          mkdir -p "$RUNNER_TEMP/ci-configs"
+          cat > "$RUNNER_TEMP/ci-configs/ci-lean.yaml" <<'YAML'
+          projectName: ci-lean
+          basePackage: com.example.cilean
+          description: lean backend with task management
+          outputDir: __RUNNER_TEMP__
           features:
             security: false
             jwt: false
@@ -59,53 +83,38 @@ jobs:
             mysql: false
             mybatisPlus: false
           entities:
-            - name: Member
+            - name: Task
               fields:
-                - name: phone
+                - name: title
                   type: String
                   required: true
-                  unique: true
-                - name: balance
-                  type: BigDecimal
-                - name: active
-                  type: Boolean
           YAML
-          python3 -m springboot_project_generator generate --config /tmp/ci-configs/ci-structured.yaml --no-interactive
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-      - name: 验证结构化字段项目 ci-structured
-        working-directory: /tmp/ci-structured
-        run: mvn package
+          path = Path(os.environ["RUNNER_TEMP"]) / "ci-configs" / "ci-lean.yaml"
+          content = path.read_text(encoding="utf-8")
+          path.write_text(
+              content.replace("__RUNNER_TEMP__", os.environ["RUNNER_TEMP"]),
+              encoding="utf-8",
+          )
+          PY
 
-      - name: 生成角色安全项目 ci-security
+      - name: 生成 lean 项目 ci-lean
+        shell: bash
+        run: python -m springboot_project_generator generate --config "$RUNNER_TEMP/ci-configs/ci-lean.yaml" --no-interactive
+
+      - name: 检查 lean 项目 smoke 文件
+        shell: bash
         run: |
-          mkdir -p /tmp/ci-configs
-          cat > /tmp/ci-configs/ci-security.yaml <<'YAML'
-          projectName: ci-security
-          basePackage: com.example.cisecurity
-          description: security backend with account management
-          outputDir: /tmp
-          roles:
-            - admin
-            - user
-          features:
-            security: true
-            jwt: true
-            redis: false
-            rabbitmq: false
-            mysql: true
-            mybatisPlus: true
-          entities:
-            - name: Account
-              fields:
-                - name: username
-                  type: String
-                  required: true
-                  unique: true
-                - name: displayName
-                  type: String
-          YAML
-          python3 -m springboot_project_generator generate --config /tmp/ci-configs/ci-security.yaml --no-interactive
+          test -f "$RUNNER_TEMP/ci-lean/pom.xml"
+          test -f "$RUNNER_TEMP/ci-lean/ci-lean-server/pom.xml"
+          test -f "$RUNNER_TEMP/ci-lean/ci-lean-server/src/main/java/com/example/cilean/controller/HealthController.java"
+          test -f "$RUNNER_TEMP/ci-lean/ci-lean-server/src/main/resources/db/schema.sql"
+          test -f "$RUNNER_TEMP/ci-lean/README.md"
 
-      - name: 验证角色安全项目 ci-security
-        working-directory: /tmp/ci-security
+      - name: 打包 lean 项目 ci-lean
+        shell: bash
+        working-directory: ${{ runner.temp }}/ci-lean
         run: mvn package
