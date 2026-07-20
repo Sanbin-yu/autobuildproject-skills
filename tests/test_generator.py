@@ -92,10 +92,40 @@ def test_rendered_files_contain_expected_dependencies_and_names(tmp_path):
     assert "<artifactId>mysql-connector-j</artifactId>" in root_pom
     assert "<artifactId>spring-boot-starter-data-redis</artifactId>" in root_pom
     assert "<artifactId>spring-boot-starter-amqp</artifactId>" in root_pom
+    assert "<artifactId>mockito-core</artifactId>" in root_pom
+    assert "<artifactId>mockito-junit-jupiter</artifactId>" in root_pom
     assert "package com.example.orders;" in app
     assert "class OrderController" in controller
     assert "order-hub-common" in readme
     assert "mvn test" in readme
+
+
+def test_generated_controller_uses_single_pluralized_route_path(tmp_path):
+    options = ProjectOptions(
+        project_name="catalog-api",
+        base_package="com.example.catalog",
+        description="catalog backend",
+        output_dir=tmp_path,
+        entities=["Product", "BorrowRecord"],
+        java_version="21",
+        maven_version="3.9.9",
+    )
+
+    project_dir = generate_project(options)
+
+    product_controller = (
+        project_dir
+        / "catalog-api-server/src/main/java/com/example/catalog/controller/ProductController.java"
+    ).read_text(encoding="utf-8")
+    borrow_record_controller = (
+        project_dir
+        / "catalog-api-server/src/main/java/com/example/catalog/controller/BorrowRecordController.java"
+    ).read_text(encoding="utf-8")
+
+    assert '@RequestMapping("/api/products")' in product_controller
+    assert "productses" not in product_controller
+    assert '@RequestMapping("/api/borrow-records")' in borrow_record_controller
+    assert "borrow-recordses" not in borrow_record_controller
 
 
 def test_generate_project_refuses_existing_target_directory(tmp_path):
@@ -292,6 +322,56 @@ entities:
     assert "UNIQUE KEY uk_members_phone (phone)" in schema
 
 
+def test_default_mybatis_plus_service_uses_mapper_crud(tmp_path):
+    config = tmp_path / "project.yaml"
+    config.write_text(
+        """
+projectName: catalog
+basePackage: com.acme.catalog
+description: catalog backend with product management
+outputDir: .
+entities:
+  - name: Product
+    fields:
+      - name: name
+        type: String
+        required: true
+      - name: price
+        type: BigDecimal
+""".strip(),
+        encoding="utf-8",
+    )
+
+    project_dir = generate_project(load_project_config(config))
+
+    service_impl = (
+        project_dir
+        / "catalog-server/src/main/java/com/acme/catalog/service/impl/ProductServiceImpl.java"
+    ).read_text(encoding="utf-8")
+    root_pom = (project_dir / "pom.xml").read_text(encoding="utf-8")
+    application = (
+        project_dir
+        / "catalog-server/src/main/java/com/acme/catalog/CatalogApplication.java"
+    ).read_text(encoding="utf-8")
+    test_application_yml = (
+        project_dir / "catalog-server/src/test/resources/application.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "import com.acme.catalog.mapper.ProductMapper;" in service_impl
+    assert "import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;" in service_impl
+    assert "import com.baomidou.mybatisplus.extension.plugins.pagination.Page;" in service_impl
+    assert "private final ProductMapper productMapper;" in service_impl
+    assert "productMapper.insert(product);" in service_impl
+    assert "productMapper.selectById(id)" in service_impl
+    assert "productMapper.selectPage(pageRequest, queryWrapper)" in service_impl
+    assert "productMapper.updateById(existing);" in service_impl
+    assert "productMapper.deleteById(id)" in service_impl
+    assert "ConcurrentHashMap" not in service_impl
+    assert "<artifactId>h2</artifactId>" in root_pom
+    assert "DataSourceAutoConfiguration" not in application
+    assert "jdbc:h2:mem:catalog" in test_application_yml
+
+
 def test_feature_toggles_remove_dependencies_and_matching_java_code(tmp_path):
     config = tmp_path / "project.yaml"
     config.write_text(
@@ -326,6 +406,13 @@ entities:
     mapper = (
         project_dir / "lean-server/src/main/java/com/acme/lean/mapper/TaskMapper.java"
     ).read_text(encoding="utf-8")
+    service_impl = (
+        project_dir
+        / "lean-server/src/main/java/com/acme/lean/service/impl/TaskServiceImpl.java"
+    ).read_text(encoding="utf-8")
+    application = (
+        project_dir / "lean-server/src/main/java/com/acme/lean/LeanApplication.java"
+    ).read_text(encoding="utf-8")
 
     assert "spring-boot-starter-security" not in pom
     assert "mybatis-plus-spring-boot3-starter" not in pom
@@ -333,10 +420,14 @@ entities:
     assert "spring-boot-starter-data-redis" not in pom
     assert "spring-boot-starter-amqp" not in pom
     assert "jjwt-api" not in pom
+    assert "<artifactId>h2</artifactId>" not in pom
     assert "TableName" not in entity
     assert "TableId" not in entity
     assert "BaseMapper" not in mapper
     assert "org.apache.ibatis.annotations.Mapper" not in mapper
+    assert "ConcurrentHashMap" in service_impl
+    assert "TaskMapper" not in service_impl
+    assert "DataSourceAutoConfiguration" in application
     assert not (
         project_dir / "lean-server/src/main/java/com/acme/lean/config/SecurityConfig.java"
     ).exists()

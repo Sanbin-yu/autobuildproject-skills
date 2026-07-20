@@ -30,7 +30,7 @@ mvn package
 mvn -pl __SERVER_MODULE__ spring-boot:run
 ```
 
-The generated project starts without requiring live MySQL, Redis, or RabbitMQ services. Database persistence is scaffolded with mapper interfaces and `src/main/resources/db/schema.sql`; wire real persistence after confirming the schema.
+Database persistence is generated with MyBatis-Plus mapper calls and `src/main/resources/db/schema.sql`. `mvn test` uses the generated H2 test datasource; configure a live MySQL datasource before running the server in database mode.
 
 ## Configuration
 

@@ -53,18 +53,33 @@ def test_repository_readme_has_open_source_trust_signals():
     assert "examples/club-project.yaml" in readme
 
 
-def test_python_package_metadata_is_ready_for_v02_installation():
+def test_python_package_metadata_is_ready_for_v03_installation():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     assert '[build-system]' in pyproject
     assert 'build-backend = "setuptools.build_meta"' in pyproject
     assert 'name = "springboot-project-generator"' in pyproject
-    assert 'version = "0.2.0"' in pyproject
+    assert 'version = "0.3.0"' in pyproject
     assert 'requires-python = ">=3.11"' in pyproject
     assert (
         'springboot-project-generator = "springboot_project_generator.cli:main"'
         in pyproject
     )
+
+
+def test_v03_docs_describe_database_backed_crud_scope():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    generated_readme_template = (
+        ROOT / "templates/project/README.md.tpl"
+    ).read_text(encoding="utf-8")
+    skill = (ROOT / "skills/springboot-project-generator/SKILL.md").read_text(encoding="utf-8")
+
+    assert "v0.3" in readme
+    assert "真实数据库 CRUD" in readme
+    assert "MyBatis-Plus/MySQL 开启时" in readme
+    assert "Database persistence is generated with MyBatis-Plus mapper calls" in generated_readme_template
+    assert "v0.3" in skill
+    assert "真实数据库 CRUD" in skill
 
 
 def test_repository_contains_external_templates():

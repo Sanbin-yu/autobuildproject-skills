@@ -10,7 +10,7 @@
 - Codex Skill：负责项目问诊，把业务对象、角色、字段和技术栈整理成结构化配置。
 - Python CLI：负责稳定生成 Spring Boot 项目，是可测试的生成引擎。
 
-当前不是生产级后端生成器。v0.2 的目标是降低安装、运行和贡献门槛：让别人敢安装、敢执行示例、敢看 CI 结果；真实数据库 CRUD、完整 JWT 登录、RBAC 和增量生成会放到后续版本。
+当前不是生产级后端生成器。v0.3 的目标是把生成物从“可启动骨架”推进到更真实的后端起点：MyBatis-Plus/MySQL 开启时生成真实数据库 CRUD，lean 模式仍保留不依赖数据库的内存 CRUD；完整 JWT 登录、RBAC 和增量生成会放到后续版本。
 
 ## Quick Start
 
@@ -94,19 +94,18 @@ Windows 用户建议使用 PowerShell 安装脚本：
 - Maven multi-module
 - Python 3.11+
 - Parent project plus `<project>-common`、`<project>-pojo`、`<project>-server`
-- 内存 CRUD，可健康启动，不要求首次运行就连接 MySQL、Redis 或 RabbitMQ
-- MyBatis-Plus / MySQL 骨架
+- MyBatis-Plus/MySQL 开启时生成真实数据库 CRUD：ServiceImpl 调用 Mapper，Mapper 继承 BaseMapper，并生成 `schema.sql`
+- lean 模式可关闭 MySQL/MyBatis-Plus，保留可启动的内存 CRUD
 - Security / JWT 骨架
 - Redis / RabbitMQ 配置骨架
 - `project.yaml` 结构化配置：业务对象、字段、角色、技术栈开关
-- 生成 `schema.sql` 数据库草稿
+- 生成 `schema.sql` 数据库草稿，并为测试环境生成 H2 datasource 配置
 
 ## Not Supported Yet
 
 - 当前不是生产级后端生成器；生成物适合作为后端项目起点和学习/原型骨架
 - 增量更新已有项目并保护用户代码
 - 完整生产级 JWT 登录链路
-- 真实数据库 CRUD 实现替代内存 Map
 - Flyway / Liquibase 迁移
 - OpenAPI / Swagger 文档
 - Docker Compose 一键启动 MySQL、Redis、RabbitMQ
@@ -158,11 +157,11 @@ PUT    /api/products
 DELETE /api/products/{id}
 ```
 
-默认 `app.security.enabled=false`，健康检查和 CRUD 骨架可以直接启动验证。需要更严格认证时，在配置中启用 Security/JWT 后继续完善登录链路。
+默认 `app.security.enabled=false`。MyBatis-Plus/MySQL 开启时，生成的 CRUD 会调用 Mapper 访问数据库；`mvn test` 使用 H2 测试配置，运行服务前请配置真实 MySQL datasource。需要更严格认证时，在配置中启用 Security/JWT 后继续完善登录链路。
 
 ## Example Generation
 
-默认全功能项目会包含 Web、Validation、Security/JWT、MyBatis-Plus/MySQL、Redis、RabbitMQ 和测试依赖骨架：
+默认全功能项目会包含 Web、Validation、Security/JWT、MyBatis-Plus/MySQL、Redis、RabbitMQ、H2 测试依赖和数据库 CRUD：
 
 ```bash
 python -m springboot_project_generator generate \

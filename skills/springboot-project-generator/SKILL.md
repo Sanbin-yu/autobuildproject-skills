@@ -68,15 +68,15 @@ entities:
 ## 默认规则
 
 - 项目结构：Maven 父工程，加 `<project>-common`、`<project>-pojo`、`<project>-server` 三个模块。
-- 依赖：Web、Validation、Security、MyBatis-Plus、MySQL、Lombok、JWT、Redis、RabbitMQ、Test。
-- 业务生成范围：1-3 个核心实体，并生成 entity/dto/vo/controller/service/mapper CRUD 骨架。
+- 依赖：Web、Validation、Security、MyBatis-Plus、MySQL、H2 测试依赖、Lombok、JWT、Redis、RabbitMQ、Test。
+- 业务生成范围：1-3 个核心实体，并生成 entity/dto/vo/controller/service/mapper CRUD。v0.3 在 MyBatis-Plus/MySQL 开启时生成真实数据库 CRUD，lean 模式保留内存 CRUD。
 - 字段级生成：如果用户提供字段，字段会进入 Entity、DTO、ListVO、DetailVO、ServiceImpl 和 `schema.sql`。
 - 字段类型：优先使用 `String`、`Integer`、`Long`、`BigDecimal`、`LocalDateTime`、`LocalDate`、`Boolean`、`Double`。
-- 外部服务：生成配置默认不要求首次启动时必须连接 MySQL、Redis 或 RabbitMQ。
+- 外部服务：`mvn test` 默认使用 H2 测试 datasource；运行数据库模式服务前需要配置 MySQL datasource。Redis 与 RabbitMQ 仍默认只预留配置。
 - 技术栈开关：关闭 Security、JWT、Redis、RabbitMQ、MySQL、MyBatis-Plus 时，要同步裁剪相关依赖和生成代码。
 - 已存在目标目录：不要覆盖；让用户选择新的输出目录或项目名。
 - 模板：Maven、项目 README、application.yml 已外置在 `templates/`，修改模板优先改模板文件。
-- 边界：当前不是生产级后端生成器；真实数据库 CRUD、完整 JWT 登录、RBAC、Docker Compose、Flyway/Liquibase 和增量生成不在 v0.2 范围内。
+- 边界：当前不是生产级后端生成器；完整 JWT 登录、RBAC、Docker Compose、Flyway/Liquibase 和增量生成不在 v0.3 范围内。
 
 ## 验证
 

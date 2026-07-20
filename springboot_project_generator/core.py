@@ -86,7 +86,7 @@ def slugify(value):
 
 
 def to_pascal_case(value):
-    words = re.findall(r"[A-Za-z0-9]+", value)
+    words = re.findall(r"[A-Z]+(?=[A-Z][a-z0-9]|$)|[A-Z]?[a-z0-9]+|[0-9]+", value)
     if not words:
         raise ValueError("Value must contain at least one letter or digit")
     return "".join(word[:1].upper() + word[1:].lower() for word in words)
@@ -428,6 +428,10 @@ def build_files(options, names, entities):
     return files
 
 
+def uses_database_crud(features):
+    return features.mysql and features.mybatis_plus
+
+
 def add_empty_resource_dirs(files, names):
     # Maven ignores empty directories, so keep lightweight placeholders where useful.
     for module in [names.common_module, names.pojo_module]:
@@ -700,19 +704,7 @@ def add_pojo_files(files, base, names, entities, features):
 
 def add_server_files(files, base, test_base, names, entities, features):
     package = names.base_package
-    app_class = "%sApplication" % names.project_class_name
-    put(files, base / ("%s.java" % app_class), java(package, None, """
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
-
-@SpringBootApplication(exclude = DataSourceAutoConfiguration.class)
-public class %s {
-    public static void main(String[] args) {
-        SpringApplication.run(%s.class, args);
-    }
-}
-""" % (app_class, app_class)))
+    put(files, base / ("%sApplication.java" % names.project_class_name), render_application_class(package, names, features))
     if features.security:
         put(files, base / "config/SecurityConfig.java", render_security_config(package))
     put(files, base / "config/WebMvcConfiguration.java", render_web_mvc_config(package))
@@ -724,7 +716,7 @@ public class %s {
         put(files, base / ("controller/%sController.java" % entity.name), render_controller(package, entity))
         put(files, base / ("mapper/%sMapper.java" % entity.name), render_mapper(package, entity, features))
         put(files, base / ("service/%sService.java" % entity.name), render_service(package, entity))
-        put(files, base / ("service/impl/%sServiceImpl.java" % entity.name), render_service_impl(package, entity))
+        put(files, base / ("service/impl/%sServiceImpl.java" % entity.name), render_service_impl(package, entity, features))
     put(files, test_base / ("%sContextTest.java" % names.project_class_name), java(package, None, """
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -736,6 +728,36 @@ class %sContextTest {
     }
 }
 """ % names.project_class_name))
+    if uses_database_crud(features):
+        put(files, Path(names.server_module) / "src/test/resources/application.yml", render_test_application_yml(names))
+
+
+def render_application_class(package, names, features):
+    app_class = "%sApplication" % names.project_class_name
+    if uses_database_crud(features):
+        return java(package, None, """
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class %s {
+    public static void main(String[] args) {
+        SpringApplication.run(%s.class, args);
+    }
+}
+""" % (app_class, app_class))
+    return java(package, None, """
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+
+@SpringBootApplication(exclude = DataSourceAutoConfiguration.class)
+public class %s {
+    public static void main(String[] args) {
+        SpringApplication.run(%s.class, args);
+    }
+}
+""" % (app_class, app_class))
 
 
 def java(base_package, subpackage, body):
@@ -767,6 +789,8 @@ def filter_parent_pom_dependencies(pom, features):
         disabled_artifacts.append("mybatis-plus-spring-boot3-starter")
     if not features.mysql:
         disabled_artifacts.append("mysql-connector-j")
+    if not uses_database_crud(features):
+        disabled_artifacts.append("h2")
     if not features.redis:
         disabled_artifacts.append("spring-boot-starter-data-redis")
     if not features.rabbitmq:
@@ -843,6 +867,11 @@ def default_parent_pom_template():
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
@@ -876,6 +905,16 @@ def default_parent_pom_template():
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.mockito</groupId>
+                    <artifactId>mockito-core</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.mockito</groupId>
+                    <artifactId>mockito-junit-jupiter</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 </project>
@@ -1094,7 +1133,7 @@ mvn package
 mvn -pl __SERVER_MODULE__ spring-boot:run
 ```
 
-The generated project starts without requiring live MySQL, Redis, or RabbitMQ services. Database persistence is scaffolded with mapper interfaces and `src/main/resources/db/schema.sql`; wire real persistence after confirming the schema.
+Database persistence is generated with MyBatis-Plus mapper calls and `src/main/resources/db/schema.sql`. `mvn test` uses the generated H2 test datasource; configure a live MySQL datasource before running the server in database mode.
 
 ## Configuration
 
@@ -1109,6 +1148,21 @@ def render_application_yml(options, names):
     return render_template_file("resources/application.yml.tpl", {
         "PROJECT_NAME": names.project_name,
     })
+
+
+def render_test_application_yml(names):
+    database_name = re.sub(r"[^A-Za-z0-9_]", "_", names.project_name)
+    return """spring:
+  datasource:
+    url: jdbc:h2:mem:%s;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+""" % database_name
 
 
 def default_application_yml_template():
@@ -1357,7 +1411,7 @@ __FIELDS__
 
 def render_controller(package, entity):
     variable = to_camel_case(entity.name)
-    path = pluralize(table_name(entity.name).replace("_", "-"))
+    path = table_name(entity.name).replace("_", "-")
     body = """
 import __PACKAGE__.dto.__ENTITY__CreateDTO;
 import __PACKAGE__.dto.__ENTITY__QueryDTO;
@@ -1474,7 +1528,127 @@ public interface %sService {
     ))
 
 
-def render_service_impl(package, entity):
+def render_service_impl(package, entity, features):
+    if uses_database_crud(features):
+        return render_database_service_impl(package, entity)
+    return render_in_memory_service_impl(package, entity)
+
+
+def render_database_service_impl(package, entity):
+    variable = to_camel_case(entity.name)
+    body = """
+import __PACKAGE__.dto.__ENTITY__CreateDTO;
+import __PACKAGE__.dto.__ENTITY__QueryDTO;
+import __PACKAGE__.dto.__ENTITY__UpdateDTO;
+import __PACKAGE__.entity.__ENTITY__;
+import __PACKAGE__.exception.NotFoundException;
+import __PACKAGE__.mapper.__ENTITY__Mapper;
+import __PACKAGE__.result.PageResult;
+import __PACKAGE__.service.__ENTITY__Service;
+import __PACKAGE__.vo.__ENTITY__DetailVO;
+import __PACKAGE__.vo.__ENTITY__ListVO;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+@Service
+@RequiredArgsConstructor
+public class __ENTITY__ServiceImpl implements __ENTITY__Service {
+    private final __ENTITY__Mapper __VARIABLE__Mapper;
+
+    @Override
+    public __ENTITY__DetailVO create(__ENTITY__CreateDTO dto) {
+        LocalDateTime now = LocalDateTime.now();
+        __ENTITY__ __VARIABLE__ = __ENTITY__.builder()
+__CREATE_ASSIGNMENTS__
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        __VARIABLE__Mapper.insert(__VARIABLE__);
+        return toDetailVO(__VARIABLE__);
+    }
+
+    @Override
+    public __ENTITY__DetailVO getById(Long id) {
+        return toDetailVO(find(id));
+    }
+
+    @Override
+    public PageResult<__ENTITY__ListVO> page(__ENTITY__QueryDTO query) {
+        int page = query.getPage() == null || query.getPage() < 1 ? 1 : query.getPage();
+        int pageSize = query.getPageSize() == null || query.getPageSize() < 1 ? 10 : query.getPageSize();
+        Page<__ENTITY__> pageRequest = new Page<>(page, pageSize);
+        QueryWrapper<__ENTITY__> queryWrapper = new QueryWrapper<>();
+        String keyword = query.getKeyword();
+__QUERY_WRAPPER_KEYWORD_BLOCK__
+        queryWrapper.orderByAsc("id");
+        Page<__ENTITY__> result = __VARIABLE__Mapper.selectPage(pageRequest, queryWrapper);
+        List<__ENTITY__ListVO> records = result.getRecords().stream()
+                .map(this::toListVO)
+                .collect(Collectors.toList());
+        return new PageResult<>(result.getTotal(), records);
+    }
+
+    @Override
+    public __ENTITY__DetailVO update(__ENTITY__UpdateDTO dto) {
+        __ENTITY__ existing = find(dto.getId());
+__UPDATE_ASSIGNMENTS__
+        existing.setUpdatedAt(LocalDateTime.now());
+        __VARIABLE__Mapper.updateById(existing);
+        return toDetailVO(existing);
+    }
+
+    @Override
+    public void delete(Long id) {
+        if (__VARIABLE__Mapper.deleteById(id) == 0) {
+            throw new NotFoundException("__ENTITY__ not found: " + id);
+        }
+    }
+
+    private __ENTITY__ find(Long id) {
+        __ENTITY__ item = __VARIABLE__Mapper.selectById(id);
+        if (item == null) {
+            throw new NotFoundException("__ENTITY__ not found: " + id);
+        }
+        return item;
+    }
+
+    private __ENTITY__ListVO toListVO(__ENTITY__ item) {
+        return __ENTITY__ListVO.builder()
+                .id(item.getId())
+__LIST_VO_ASSIGNMENTS__
+                .build();
+    }
+
+    private __ENTITY__DetailVO toDetailVO(__ENTITY__ item) {
+        return __ENTITY__DetailVO.builder()
+                .id(item.getId())
+__DETAIL_VO_ASSIGNMENTS__
+                .createdAt(item.getCreatedAt())
+                .updatedAt(item.getUpdatedAt())
+                .build();
+    }
+}
+"""
+    return java(package, "service.impl", replace_tokens(
+        body,
+        PACKAGE=package,
+        ENTITY=entity.name,
+        VARIABLE=variable,
+        CREATE_ASSIGNMENTS=builder_assignments_from_dto(entity.fields),
+        UPDATE_ASSIGNMENTS=update_assignments_from_dto(entity.fields),
+        QUERY_WRAPPER_KEYWORD_BLOCK=query_wrapper_keyword_block(entity.fields),
+        LIST_VO_ASSIGNMENTS=builder_assignments_from_item(list_fields(entity.fields)),
+        DETAIL_VO_ASSIGNMENTS=builder_assignments_from_item(entity.fields),
+    ))
+
+
+def render_in_memory_service_impl(package, entity):
     variable = to_camel_case(entity.name)
     body = """
 import __PACKAGE__.dto.__ENTITY__CreateDTO;
@@ -1704,6 +1878,27 @@ def update_assignments_from_dto(fields):
             existing.%s(dto.%s());
         }""" % (getter, setter, getter))
     return "\n".join(blocks)
+
+
+def query_wrapper_keyword_block(fields):
+    string_fields = [field_spec for field_spec in fields if field_spec.java_type == "String"][:3]
+    if not string_fields:
+        return ""
+    if len(string_fields) == 1:
+        return """        if (StringUtils.hasText(keyword)) {
+            queryWrapper.like("%s", keyword);
+        }""" % column_name(string_fields[0].name)
+    lines = [
+        "        if (StringUtils.hasText(keyword)) {",
+        "            queryWrapper.and(wrapper -> wrapper",
+    ]
+    for index, field_spec in enumerate(string_fields):
+        if index:
+            lines.append("                    .or()")
+        suffix = ");" if index == len(string_fields) - 1 else ""
+        lines.append('                    .like("%s", keyword)%s' % (column_name(field_spec.name), suffix))
+    lines.append("        }")
+    return "\n".join(lines)
 
 
 def keyword_match_expression(fields):
